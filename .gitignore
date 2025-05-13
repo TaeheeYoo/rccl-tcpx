@@ -34,6 +34,7 @@ config.log
 config.status
 config.sub
 configure
+configure~
 depcomp
 missing
 ltmain.sh
@@ -42,6 +43,7 @@ install-sh
 Makefile
 src/Makefile
 include/Makefile
+stamp.h1
 
 .deps
 example/main
