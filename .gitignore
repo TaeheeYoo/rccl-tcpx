@@ -47,6 +47,7 @@ stamp.h1
 autoscan.log
 config.h
 config.h.in~
+stamp-h1
 
 .deps
 example/main
