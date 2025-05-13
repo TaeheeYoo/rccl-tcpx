@@ -44,6 +44,9 @@ Makefile
 src/Makefile
 include/Makefile
 stamp.h1
+autoscan.log
+config.h
+config.h.in~
 
 .deps
 example/main
