@@ -1,8 +1,7 @@
 #include "tcpx.h"
 
 int max_requests = NCCL_NET_MAX_REQUESTS;
-/* TODO Support multiple interfaces */
-int ncclNetIfs = 1;
+int ncclNetIfs = 0;
 
 struct nccl_net_socket_listen_comm {
 	int fd;
@@ -31,15 +30,50 @@ struct tcpx_dev {
 
 static struct tcpx_dev tcpx_devs[MAX_IFS];
 
-__hidden ncclResult_t pluginInit(ncclDebugLogger_t logFunction)
+/* TODO NCCL_TCPX_SUBNET */
+__hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 {
 	char* ifs = getenv("NCCL_TCPX_IFNAMES");
+	struct ifaddrs *ifaddr, *ifa;
+	int i = 0, count = 0;
+	char *token;
 
 	if (!ifs) {
 		printf("NET/TCPX tcpx interfaces are not defined\n");
 		return ncclInternalError;
 	} else {
-		printf("NET/TCPX tcpx interfaces are %s\n", ifs);
+		if (getifaddrs(&ifaddr) == -1) {
+			printf("NET/TCPX Can't get interfaces\n");
+			return ncclInternalError;
+		}
+
+		token = strtok(ifs, ",");
+		while (token != NULL && count < MAX_IFS) {
+			for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+				if (ifa->ifa_addr &&
+				    !strcmp(ifa->ifa_name, token)) {
+					if (ifa->ifa_addr->sa_family != AF_INET)
+						continue;
+
+					memcpy(&tcpx_devs[i].addr,
+					       ifa->ifa_addr,
+					       sizeof(struct sockaddr));
+					strcpy(tcpx_devs[i].dev_name, token);
+					printf("NET/TCPX Interface %d: %s\n",
+					       i + 1, tcpx_devs[i].dev_name);
+					i++;
+					ncclNetIfs++;
+					goto next;
+				}
+			}
+next:
+			count++;
+			token = strtok(NULL, ",");
+		}
+
+		if (i == MAX_IFS) {
+			printf("Maximum number of interfaces reached.\n");
+		}
 	}
 
 	return ncclSuccess;
@@ -144,7 +178,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	       sizeof(handle->connect_addr));
 
 	family = handle->connect_addr.sa.sa_family;
-	printf("[TEST]%s %u family = %d\n", __func__, __LINE__, family);
+	printf("[TEST]%s %u dev=%d family = %d \n", __func__, __LINE__, dev, family);
 	salen = (family == AF_INET) ? sizeof(struct sockaddr_in) :
 				      sizeof(struct sockaddr_in6);
 
@@ -310,7 +344,7 @@ __hidden ncclResult_t pluginMakeVDevice(int* d, ncclNetVDeviceProps_t* props)
 
 ncclNet_v9_t ncclNetPlugin_v9 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit,
+	.init = tcpx_init,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties,
 	.listen = tcpx_listen,
@@ -370,7 +404,7 @@ __hidden ncclResult_t pluginIrecv_v8(void* recvComm, int n, void** data,
 
 const ncclNet_v8_t ncclNetPlugin_v8 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit,
+	.init = tcpx_init,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v8,
 	.listen = tcpx_listen,
@@ -421,7 +455,7 @@ __hidden ncclResult_t pluginRegMr_v7(void* collComm, void* data, int size,
 
 const ncclNet_v7_t ncclNetPlugin_v7 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit,
+	.init = tcpx_init,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v7,
 	.listen = tcpx_listen,
@@ -474,7 +508,7 @@ __hidden ncclResult_t pluginAccept_v6(void* listenComm, void** recvComm)
 
 const ncclNet_v6_t ncclNetPlugin_v6 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit,
+	.init = tcpx_init,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v6,
 	.listen = tcpx_listen,
@@ -495,7 +529,7 @@ const ncclNet_v6_t ncclNetPlugin_v6 = {
 /* v5 Compat */
 const ncclNet_v5_t ncclNetPlugin_v5 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit,
+	.init = tcpx_init,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v6,
 	.listen = tcpx_listen,
@@ -574,7 +608,7 @@ static ncclResult_t pluginAccept_v4(void* listenComm, void** recvComm)
 
 const ncclNet_v4_t ncclNetPlugin_v4 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit,
+	.init = tcpx_init,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v4,
 	.listen = tcpx_listen,
@@ -607,11 +641,11 @@ static ncclResult_t pluginFlush(void* recvComm, void* data, int size,
 	return ret;
 }
 
-static ncclResult_t pluginInit_v3(ncclDebugLogger_t logFunction)
+static ncclResult_t tcpx_init_v3(ncclDebugLogger_t logFunction)
 {
 	max_requests = NCCL_NET_MAX_REQUESTS_V3;
 
-	return pluginInit(logFunction);
+	return tcpx_init(logFunction);
 }
 
 static ncclResult_t tcpx_listen_v3(int dev, void* handle, void** listenComm)
@@ -637,7 +671,7 @@ static ncclResult_t pluginConnect_v3(int dev, void* handle, void** sendComm)
 
 const ncclNet_v3_t ncclNetPlugin_v3 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit_v3,
+	.init = tcpx_init_v3,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v4,
 	.listen = tcpx_listen_v3,
@@ -657,7 +691,7 @@ const ncclNet_v3_t ncclNetPlugin_v3 = {
 /* v2 Compat */
 const ncclNet_v2_t ncclNetPlugin_v2 = {
 	.name = PLUGIN_NAME,
-	.init = pluginInit_v3,
+	.init = tcpx_init_v3,
 	.devices = pluginDevices,
 	.pciPath = pluginPciPath,
 	.ptrSupport = pluginPtrSupport,
