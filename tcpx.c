@@ -1,28 +1,66 @@
-#include <string.h>
-#include "net.h"
-
-#define __hidden __attribute__ ((visibility("hidden")))
-#define NCCL_PLUGIN_MAX_RECVS 1
+#include "tcpx.h"
 
 int max_requests = NCCL_NET_MAX_REQUESTS;
+/* TODO Support multiple interfaces */
+int ncclNetIfs = 1;
+
+struct nccl_net_socket_listen_comm {
+	int fd;
+	int num_socks;
+	int num_threads;
+	int dev;
+};
+
+union socket_address {
+	struct sockaddr sa;
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+};
+
+struct nccl_net_socket_handle {
+	union socket_address connect_addr;
+	int num_socks;
+	int num_threads;
+};
+
+struct tcpx_dev {
+	union socket_address addr;
+	char dev_name[MAX_IF_NAME_SIZE];
+	char* pci_path;
+};
+
+static struct tcpx_dev tcpx_devs[MAX_IFS];
 
 __hidden ncclResult_t pluginInit(ncclDebugLogger_t logFunction)
 {
+	char* ifs = getenv("NCCL_TCPX_IFNAMES");
+
+	printf("[TEST]%s %u tcpx interfaces = %s\n", __func__, __LINE__, ifs);
+
 	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginDevices(int* ndev)
 {
-	*ndev = 0; return ncclSuccess;
+	printf("[TEST]%s %u\n", __func__, __LINE__);
+
+	/* interface index? */
+	*ndev = ncclNetIfs;
+
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginPciPath(int dev, char** path)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
+
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginPtrSupport(int dev, int* supportedTypes)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
+
 	return ncclInternalError;
 }
 
@@ -74,26 +112,113 @@ __hidden ncclResult_t pluginGetProperties(int dev, ncclNetProperties_t* props)
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginListen(int dev, void* handle, void** listenComm)
+__hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
+				  void **listen_comm)
 {
-	return ncclInternalError;
+	struct nccl_net_socket_listen_comm *comm;
+	int family, salen, err, sockfd, opt = 1;
+	struct nccl_net_socket_handle* handle;
+	char line[SOCKET_NAME_MAXLEN + 1];
+
+	handle = (struct nccl_net_socket_handle *)opaque_handle;
+
+	if (dev < 0 || dev >= ncclNetIfs) {
+		printf("NET/TCPX: tcpx_listen dev=%d ncclNetIfs=%d",
+		       dev, ncclNetIfs);
+		return ncclInternalError;
+	}
+
+	memset(handle, 0, sizeof(struct nccl_net_socket_handle));
+	comm = calloc(1, sizeof(struct nccl_net_socket_listen_comm));
+	if (!comm) {
+		printf("NET/TCPX: Failed to allocate memory\n");
+		return ncclInternalError;
+	}
+
+	comm->fd = -1;
+	memcpy((void *)&handle->connect_addr, &tcpx_devs[dev].addr,
+	       sizeof(handle->connect_addr));
+
+	family = handle->connect_addr.sa.sa_family;
+	salen = (family == AF_INET) ? sizeof(struct sockaddr_in) :
+				      sizeof(struct sockaddr_in6);
+
+	/* Create socket and bind it to a port */
+	sockfd = socket(family, SOCK_STREAM, 0);
+	if (sockfd == -1) {
+		printf("TCPX/Net : Socket creation failed : %s",
+		       strerror(errno));
+		return ncclSystemError;
+	}
+
+	if (socket_to_port(&handle->connect_addr.sa)) {
+		// Port is forced by env. Make sure we get the port.
+#if defined(SO_REUSEPORT)
+		err = setsockopt(sockfd, SOL_SOCKET,
+				 SO_REUSEADDR | SO_REUSEPORT,
+				 &opt, sizeof(opt));
+#else
+		err = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt,
+				 sizeof(opt));
+#endif
+		if (err) {
+			printf("TCPX/Net : setsockopt failed\n");
+			return ncclSystemError;
+		}
+	}
+
+	err = bind(sockfd, &handle->connect_addr.sa, salen);
+	if (err) {
+		printf("TCPX/Net : bind failed\n");
+		return ncclSystemError;
+	}
+
+	/* Get the assigned Port */
+	socklen_t size = salen;
+	err = getsockname(sockfd, &handle->connect_addr.sa, &size);
+	if (err) {
+		printf("TCPX/Net : getsockname failed\n");
+		return ncclSystemError;
+	}
+
+	/* Put the socket in listen mode
+	 * NB: The backlog will be silently truncated to the value in /proc/sys/net/core/somaxconn
+	 */
+	err = listen(sockfd, 16384);
+	if (err) {
+		printf("TCPX/Net : listen failed\n");
+		return ncclSystemError;
+	}
+	comm->fd = sockfd;
+
+	comm->num_socks = 1;
+	comm->num_threads = 1;
+	handle->num_socks = comm->num_socks;
+	handle->num_threads = comm->num_threads;
+	comm->dev = dev;
+	*listen_comm = comm;
+
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginConnect(int dev, void* handle, void** sendComm,
 				    ncclNetDeviceHandle_t** sendDevComm)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 				   ncclNetDeviceHandle_t** recvDevComm)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
 				  int type, void** mhandle)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
@@ -101,17 +226,20 @@ __hidden ncclResult_t pluginRegMrDmaBuf(void* collComm, void* data, size_t size,
 					int type, uint64_t offset, int fd,
 					void** mhandle)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginDeregMr(void* collComm, void* mhandle)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
 				  int tag, void* mhandle, void** request)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
@@ -119,59 +247,68 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 				  size_t* sizes, int* tags, void** mhandles,
 				  void** request)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginIflush(void* recvComm, int n, void** data,
 				   int* sizes, void** mhandles, void** request)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginCloseSend(void* sendComm)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginCloseRecv(void* recvComm)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginCloseListen(void* listenComm)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginIrecvConsumed(void* recvComm, int n, void* request)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginGetDeviceMr(void* comm, void* mhandle,
 					void** dptr_mhandle)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginMakeVDevice(int* d, ncclNetVDeviceProps_t* props)
 {
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }
 
-#define PLUGIN_NAME "Plugin"
+#define PLUGIN_NAME "tcpx"
 
 ncclNet_v9_t ncclNetPlugin_v9 = {
 	.name = PLUGIN_NAME,
 	.init = pluginInit,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties,
-	.listen = pluginListen,
+	.listen = tcpx_listen,
 	.connect = pluginConnect,
 	.accept = pluginAccept,
 	.regMr = pluginRegMr,
@@ -231,7 +368,7 @@ const ncclNet_v8_t ncclNetPlugin_v8 = {
 	.init = pluginInit,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v8,
-	.listen = pluginListen,
+	.listen = tcpx_listen,
 	.connect = pluginConnect,
 	.accept = pluginAccept,
 	.regMr = pluginRegMr,
@@ -282,7 +419,7 @@ const ncclNet_v7_t ncclNetPlugin_v7 = {
 	.init = pluginInit,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v7,
-	.listen = pluginListen,
+	.listen = tcpx_listen,
 	.connect = pluginConnect,
 	.accept = pluginAccept,
 	.regMr = pluginRegMr_v7,
@@ -335,7 +472,7 @@ const ncclNet_v6_t ncclNetPlugin_v6 = {
 	.init = pluginInit,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v6,
-	.listen = pluginListen,
+	.listen = tcpx_listen,
 	.connect = pluginConnect_v6,
 	.accept = pluginAccept_v6,
 	.regMr = pluginRegMr_v7,
@@ -356,7 +493,7 @@ const ncclNet_v5_t ncclNetPlugin_v5 = {
 	.init = pluginInit,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v6,
-	.listen = pluginListen,
+	.listen = tcpx_listen,
 	.connect = pluginConnect_v6,
 	.accept = pluginAccept_v6,
 	.regMr = pluginRegMr_v7,
@@ -435,7 +572,7 @@ const ncclNet_v4_t ncclNetPlugin_v4 = {
 	.init = pluginInit,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v4,
-	.listen = pluginListen,
+	.listen = tcpx_listen,
 	.connect = pluginConnect_v4,
 	.accept = pluginAccept_v4,
 	.regMr = pluginRegMr_v7,
@@ -472,12 +609,12 @@ static ncclResult_t pluginInit_v3(ncclDebugLogger_t logFunction)
 	return pluginInit(logFunction);
 }
 
-static ncclResult_t pluginListen_v3(int dev, void* handle, void** listenComm)
+static ncclResult_t tcpx_listen_v3(int dev, void* handle, void** listenComm)
 {
 	char pluginHandle[NCCL_NET_HANDLE_MAXSIZE];
 	ncclResult_t ret;
 
-	ret = pluginListen(dev, &pluginHandle, listenComm);
+	ret = tcpx_listen(dev, &pluginHandle, listenComm);
 
 	memcpy(handle, &pluginHandle, NCCL_NET_HANDLE_MAXSIZE_V4);
 
@@ -498,7 +635,7 @@ const ncclNet_v3_t ncclNetPlugin_v3 = {
 	.init = pluginInit_v3,
 	.devices = pluginDevices,
 	.getProperties = pluginGetProperties_v4,
-	.listen = pluginListen_v3,
+	.listen = tcpx_listen_v3,
 	.connect = pluginConnect_v3,
 	.accept = pluginAccept_v4,
 	.regMr = pluginRegMr_v7,
@@ -519,7 +656,7 @@ const ncclNet_v2_t ncclNetPlugin_v2 = {
 	.devices = pluginDevices,
 	.pciPath = pluginPciPath,
 	.ptrSupport = pluginPtrSupport,
-	.listen = pluginListen,
+	.listen = tcpx_listen,
 	.connect = pluginConnect_v4,
 	.accept = pluginAccept_v4,
 	.regMr = pluginRegMr_v7,

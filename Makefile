@@ -2,7 +2,7 @@ PLUGIN_SO:=librccl-net-tcpx.so
 
 default: $(PLUGIN_SO)
 
-$(PLUGIN_SO): plugin.c
+$(PLUGIN_SO): tcpx.c
 	      $(CC) -I. \
 		-I /usr/include \
 		-I /usr/src/`uname -r`/include \
