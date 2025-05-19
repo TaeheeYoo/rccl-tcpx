@@ -35,7 +35,12 @@ __hidden ncclResult_t pluginInit(ncclDebugLogger_t logFunction)
 {
 	char* ifs = getenv("NCCL_TCPX_IFNAMES");
 
-	printf("[TEST]%s %u tcpx interfaces = %s\n", __func__, __LINE__, ifs);
+	if (!ifs) {
+		printf("NET/TCPX tcpx interfaces are not defined\n");
+		return ncclInternalError;
+	} else {
+		printf("NET/TCPX tcpx interfaces are %s\n", ifs);
+	}
 
 	return ncclSuccess;
 }
@@ -128,7 +133,6 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 		return ncclInternalError;
 	}
 
-	memset(handle, 0, sizeof(struct nccl_net_socket_handle));
 	comm = calloc(1, sizeof(struct nccl_net_socket_listen_comm));
 	if (!comm) {
 		printf("NET/TCPX: Failed to allocate memory\n");
@@ -140,13 +144,14 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	       sizeof(handle->connect_addr));
 
 	family = handle->connect_addr.sa.sa_family;
+	printf("[TEST]%s %u family = %d\n", __func__, __LINE__, family);
 	salen = (family == AF_INET) ? sizeof(struct sockaddr_in) :
 				      sizeof(struct sockaddr_in6);
 
 	/* Create socket and bind it to a port */
 	sockfd = socket(family, SOCK_STREAM, 0);
 	if (sockfd == -1) {
-		printf("TCPX/Net : Socket creation failed : %s",
+		printf("NET/TCPX: Socket creation failed : %s\n",
 		       strerror(errno));
 		return ncclSystemError;
 	}
@@ -162,14 +167,14 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 				 sizeof(opt));
 #endif
 		if (err) {
-			printf("TCPX/Net : setsockopt failed\n");
+			printf("NET/TCPX : setsockopt failed\n");
 			return ncclSystemError;
 		}
 	}
 
 	err = bind(sockfd, &handle->connect_addr.sa, salen);
 	if (err) {
-		printf("TCPX/Net : bind failed\n");
+		printf("NET/TCPX : bind failed\n");
 		return ncclSystemError;
 	}
 
@@ -177,7 +182,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	socklen_t size = salen;
 	err = getsockname(sockfd, &handle->connect_addr.sa, &size);
 	if (err) {
-		printf("TCPX/Net : getsockname failed\n");
+		printf("NET/TCPX : getsockname failed\n");
 		return ncclSystemError;
 	}
 
@@ -186,7 +191,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	 */
 	err = listen(sockfd, 16384);
 	if (err) {
-		printf("TCPX/Net : listen failed\n");
+		printf("NET/TCPX : listen failed\n");
 		return ncclSystemError;
 	}
 	comm->fd = sockfd;
