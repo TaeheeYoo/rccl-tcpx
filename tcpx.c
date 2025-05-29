@@ -3,6 +3,13 @@
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
 
+struct nccl_net_socket_comm {
+	int fd;
+	int num_socks;
+	int num_threads;
+	int dev;
+};
+
 struct nccl_net_socket_listen_comm {
 	int fd;
 	int num_socks;
@@ -252,18 +259,71 @@ FREE_COMM:	free(comm);
 RETURN_ERROR:	return retval;
 }
 
-__hidden ncclResult_t pluginConnect(int dev, void* handle, void** sendComm,
+__hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
+				    void** sendComm,
 				    ncclNetDeviceHandle_t** sendDevComm)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_handle *handle = opaqueHandle;
+	struct nccl_net_socket_comm *comm;
+	ncclResult_t retval;
+	size_t addrlen;
+
+	comm = calloc(1, sizeof(struct nccl_net_socket_comm));
+	if (comm == NULL) {
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
+	}
+
+	comm->fd = socket(handle->connect_addr.sa.sa_family, SOCK_STREAM, 0);
+	if (comm->fd == -1) {
+		retval = ncclSystemError;
+		goto FREE_COMM;
+	}
+
+	addrlen = (handle->connect_addr.sa.sa_family == AF_INET) ?
+		  sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+	if (connect(comm->fd, &handle->connect_addr.sa, addrlen) == -1) {
+		retval = ncclInternalError;
+		goto CLOSE_COMM_FD;
+	}
+
+	*sendComm = comm;
+
+	return ncclSuccess;
+
+CLOSE_COMM_FD:	close(comm->fd);
+FREE_COMM:	free(comm);
+RETURN_ERROR:	return retval;
 }
 
 __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 				   ncclNetDeviceHandle_t** recvDevComm)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_listen_comm *lcomm = listenComm;
+	struct nccl_net_socket_comm *rcomm;
+	ncclResult_t retval;
+
+	if (rcomm == NULL) {
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
+	}
+
+	rcomm->num_socks = lcomm->num_socks;
+	rcomm->num_threads = lcomm->num_threads;
+	rcomm->dev = lcomm->dev;
+
+	rcomm->fd = accept(lcomm->fd, NULL, 0);
+	if (rcomm->fd == -1) {
+		retval = ncclInternalError;
+		goto FREE_RCOMM;
+	}
+
+	*recvComm = rcomm;
+
+	return ncclSuccess;
+
+FREE_RCOMM:	free(rcomm);
+RETURN_ERROR:	return retval;
 }
 
 __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
