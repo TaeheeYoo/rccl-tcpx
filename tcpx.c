@@ -3,11 +3,28 @@
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
 
+enum nccl_socket_ops {
+	NCCL_SOCKET_SEND = 0,
+	NCCL_SOCKET_RECV = 1
+};
+
+struct nccl_net_socket_request {
+	enum nccl_socket_ops op;
+	void *data;
+	int size;
+	int offset;
+	int used;
+
+	struct nccl_net_socket_comm *comm;
+};
+
 struct nccl_net_socket_comm {
 	int fd;
 	int num_socks;
 	int num_threads;
 	int dev;
+
+	struct nccl_net_socket_request requests[MAX_REQUESTS];
 };
 
 struct nccl_net_socket_listen_comm {
@@ -351,7 +368,25 @@ __hidden ncclResult_t pluginDeregMr(void* collComm, void* mhandle)
 __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
 				  int tag, void* mhandle, void** request)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	struct nccl_net_socket_comm *comm = sendComm;
+	struct nccl_net_socket_request *req;
+
+	for (int i = 0; i < MAX_REQUESTS; i++) {
+		req = comm->requests + i;
+		if (req->used != 0)
+			continue;
+
+		req->op = NCCL_SOCKET_SEND;
+		req->data = data;
+		req->size = size;
+		req->used = 1;
+		req->comm = comm;
+
+		*request = req;
+
+		return ncclSuccess;
+	}
+
 	return ncclInternalError;
 }
 
@@ -359,6 +394,27 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 				  size_t* sizes, int* tags, void** mhandles,
 				  void** request)
 {
+	struct nccl_net_socket_comm *comm = recvComm;
+	struct nccl_net_socket_request *req;
+
+	for (int i = 0; i < MAX_REQUESTS; i++) {
+		req = comm->requests + i;
+		if (req->used != 0)
+			continue;
+
+		req->op = NCCL_SOCKET_RECV;
+		req->data = data[0];
+		req->size = sizes[0];
+		req->used = 1;
+		req->comm = comm;
+
+		*request = req;
+
+		return ncclSuccess;
+	}
+
+	return ncclInternalError;
+
 	printf("[TEST]%s %u \n", __func__, __LINE__);
 	return ncclInternalError;
 }

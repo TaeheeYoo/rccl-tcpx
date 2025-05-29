@@ -27,6 +27,7 @@
 /* connection timed out retry times (each one can take 20s) */
 #define RETRY_TIMEDOUT_TIMES    3
 #define SOCKET_NAME_MAXLEN (NI_MAXHOST + NI_MAXSERV)
+#define MAX_REQUESTS NCCL_NET_MAX_REQUESTS
 
 static inline uint16_t socket_to_port(struct sockaddr *saddr) {
 	return ntohs(saddr->sa_family == AF_INET ?
