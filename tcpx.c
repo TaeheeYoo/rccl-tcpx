@@ -12,7 +12,6 @@ struct nccl_net_socket_request {
 	enum nccl_socket_ops op;
 	void *data;
 	int size;
-	int offset;
 	int used;
 
 	struct nccl_net_socket_comm *comm;
@@ -428,8 +427,46 @@ __hidden ncclResult_t pluginIflush(void* recvComm, int n, void** data,
 
 __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_request *req = request;
+	struct nccl_net_socket_comm *comm = req->comm;
+
+	int data = req->size;
+	int len;
+
+	if (req == NULL)
+		return ncclInternalError;
+
+	if (req->used == 0)
+		return ncclInvalidUsage;
+
+	if (req->op == NCCL_SOCKET_RECV) {
+		len = recv(comm->fd, &data, sizeof(int), 0);
+		if (len != sizeof(int))
+			return ncclInternalError;
+
+		if (data > req->size)
+			return ncclInvalidUsage;
+	} else if (req->op == NCCL_SOCKET_SEND) {
+		len = send(comm->fd, &data, sizeof(int), 0);
+		if (len != sizeof(int))
+			return ncclInternalError;
+	}
+
+	req->size = data;
+
+	if (req->op == NCCL_SOCKET_RECV)
+		len = recv(comm->fd, req->data, req->size, 0);
+	else if (req->op == NCCL_SOCKET_SEND)
+		len = send(comm->fd, req->data, req->size, 0);
+
+	if (len != req->size)
+		return ncclInternalError;
+
+	*done = 1;
+	*size = req->size;
+	req->used = 0;
+
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginCloseSend(void* sendComm)
