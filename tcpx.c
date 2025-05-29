@@ -158,19 +158,22 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	int family, salen, err, sockfd, opt = 1;
 	struct nccl_net_socket_handle* handle;
 	char line[SOCKET_NAME_MAXLEN + 1];
+	ncclResult_t retval;
 
 	handle = (struct nccl_net_socket_handle *)opaque_handle;
 
 	if (dev < 0 || dev >= ncclNetIfs) {
 		printf("NET/TCPX: tcpx_listen dev=%d ncclNetIfs=%d",
 		       dev, ncclNetIfs);
-		return ncclInternalError;
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
 	}
 
 	comm = calloc(1, sizeof(struct nccl_net_socket_listen_comm));
 	if (!comm) {
 		printf("NET/TCPX: Failed to allocate memory\n");
-		return ncclInternalError;
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
 	}
 
 	comm->fd = -1;
@@ -187,7 +190,8 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	if (sockfd == -1) {
 		printf("NET/TCPX: Socket creation failed : %s\n",
 		       strerror(errno));
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto FREE_COMM;
 	}
 
 	if (socket_to_port(&handle->connect_addr.sa)) {
@@ -202,14 +206,16 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 #endif
 		if (err) {
 			printf("NET/TCPX : setsockopt failed\n");
-			return ncclSystemError;
+			retval = ncclSystemError;
+			goto CLOSE_SOCKFD;
 		}
 	}
 
 	err = bind(sockfd, &handle->connect_addr.sa, salen);
 	if (err) {
 		printf("NET/TCPX : bind failed\n");
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto CLOSE_SOCKFD;
 	}
 
 	/* Get the assigned Port */
@@ -217,7 +223,8 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	err = getsockname(sockfd, &handle->connect_addr.sa, &size);
 	if (err) {
 		printf("NET/TCPX : getsockname failed\n");
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto CLOSE_SOCKFD;
 	}
 
 	/* Put the socket in listen mode
@@ -226,7 +233,8 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	err = listen(sockfd, 16384);
 	if (err) {
 		printf("NET/TCPX : listen failed\n");
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto CLOSE_SOCKFD;
 	}
 	comm->fd = sockfd;
 
@@ -238,6 +246,10 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	*listen_comm = comm;
 
 	return ncclSuccess;
+
+CLOSE_SOCKFD:	close(sockfd);
+FREE_COMM:	free(comm);
+RETURN_ERROR:	return retval;
 }
 
 __hidden ncclResult_t pluginConnect(int dev, void* handle, void** sendComm,
