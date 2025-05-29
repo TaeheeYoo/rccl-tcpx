@@ -3,6 +3,13 @@
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
 
+struct nccl_net_socket_comm {
+	int fd;
+	int num_socks;
+	int num_threads;
+	int dev;
+};
+
 struct nccl_net_socket_listen_comm {
 	int fd;
 	int num_socks;
@@ -158,19 +165,22 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	int family, salen, err, sockfd, opt = 1;
 	struct nccl_net_socket_handle* handle;
 	char line[SOCKET_NAME_MAXLEN + 1];
+	ncclResult_t retval;
 
 	handle = (struct nccl_net_socket_handle *)opaque_handle;
 
 	if (dev < 0 || dev >= ncclNetIfs) {
 		printf("NET/TCPX: tcpx_listen dev=%d ncclNetIfs=%d",
 		       dev, ncclNetIfs);
-		return ncclInternalError;
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
 	}
 
 	comm = calloc(1, sizeof(struct nccl_net_socket_listen_comm));
 	if (!comm) {
 		printf("NET/TCPX: Failed to allocate memory\n");
-		return ncclInternalError;
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
 	}
 
 	comm->fd = -1;
@@ -187,7 +197,8 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	if (sockfd == -1) {
 		printf("NET/TCPX: Socket creation failed : %s\n",
 		       strerror(errno));
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto FREE_COMM;
 	}
 
 	if (socket_to_port(&handle->connect_addr.sa)) {
@@ -202,14 +213,16 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 #endif
 		if (err) {
 			printf("NET/TCPX : setsockopt failed\n");
-			return ncclSystemError;
+			retval = ncclSystemError;
+			goto CLOSE_SOCKFD;
 		}
 	}
 
 	err = bind(sockfd, &handle->connect_addr.sa, salen);
 	if (err) {
 		printf("NET/TCPX : bind failed\n");
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto CLOSE_SOCKFD;
 	}
 
 	/* Get the assigned Port */
@@ -217,7 +230,8 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	err = getsockname(sockfd, &handle->connect_addr.sa, &size);
 	if (err) {
 		printf("NET/TCPX : getsockname failed\n");
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto CLOSE_SOCKFD;
 	}
 
 	/* Put the socket in listen mode
@@ -226,7 +240,8 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	err = listen(sockfd, 16384);
 	if (err) {
 		printf("NET/TCPX : listen failed\n");
-		return ncclSystemError;
+		retval = ncclSystemError;
+		goto CLOSE_SOCKFD;
 	}
 	comm->fd = sockfd;
 
@@ -238,20 +253,77 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	*listen_comm = comm;
 
 	return ncclSuccess;
+
+CLOSE_SOCKFD:	close(sockfd);
+FREE_COMM:	free(comm);
+RETURN_ERROR:	return retval;
 }
 
-__hidden ncclResult_t pluginConnect(int dev, void* handle, void** sendComm,
+__hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
+				    void** sendComm,
 				    ncclNetDeviceHandle_t** sendDevComm)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_handle *handle = opaqueHandle;
+	struct nccl_net_socket_comm *comm;
+	ncclResult_t retval;
+	size_t addrlen;
+
+	comm = calloc(1, sizeof(struct nccl_net_socket_comm));
+	if (comm == NULL) {
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
+	}
+
+	comm->fd = socket(handle->connect_addr.sa.sa_family, SOCK_STREAM, 0);
+	if (comm->fd == -1) {
+		retval = ncclSystemError;
+		goto FREE_COMM;
+	}
+
+	addrlen = (handle->connect_addr.sa.sa_family == AF_INET) ?
+		  sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+	if (connect(comm->fd, &handle->connect_addr.sa, addrlen) == -1) {
+		retval = ncclInternalError;
+		goto CLOSE_COMM_FD;
+	}
+
+	*sendComm = comm;
+
+	return ncclSuccess;
+
+CLOSE_COMM_FD:	close(comm->fd);
+FREE_COMM:	free(comm);
+RETURN_ERROR:	return retval;
 }
 
 __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 				   ncclNetDeviceHandle_t** recvDevComm)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_listen_comm *lcomm = listenComm;
+	struct nccl_net_socket_comm *rcomm;
+	ncclResult_t retval;
+
+	if (rcomm == NULL) {
+		retval = ncclInternalError;
+		goto RETURN_ERROR;
+	}
+
+	rcomm->num_socks = lcomm->num_socks;
+	rcomm->num_threads = lcomm->num_threads;
+	rcomm->dev = lcomm->dev;
+
+	rcomm->fd = accept(lcomm->fd, NULL, 0);
+	if (rcomm->fd == -1) {
+		retval = ncclInternalError;
+		goto FREE_RCOMM;
+	}
+
+	*recvComm = rcomm;
+
+	return ncclSuccess;
+
+FREE_RCOMM:	free(rcomm);
+RETURN_ERROR:	return retval;
 }
 
 __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
