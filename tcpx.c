@@ -303,6 +303,7 @@ __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 	struct nccl_net_socket_comm *rcomm;
 	ncclResult_t retval;
 
+	rcomm = calloc(1, sizeof(struct nccl_net_socket_comm));
 	if (rcomm == NULL) {
 		retval = ncclInternalError;
 		goto RETURN_ERROR;
