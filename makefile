@@ -152,6 +152,7 @@ $(OUT_DIR)/$1:: $(OBJ) $(ARV)
 	$(CC) -o $$@ $$^ $(LDLIBS)
 
 endef
+
 # -----------------------------------------------------------------------------
 # Preprocessing
 # -----------------------------------------------------------------------------
@@ -197,7 +198,6 @@ create_output_dir := $(shell												\
 # Rules 
 # -----------------------------------------------------------------------------
 # Libraries
-
 $(foreach l,$(LIBRARIES),													\
 	$(eval $(call make-library,$l.a,$(LIB_DIR)/$l))							\
 )
@@ -210,6 +210,7 @@ $(eval $(call make-program,$(OUTPUT),.))
 endif
 
 DEPENDENCIES := $(patsubst %.o,%.d,$(OBJECTS))
+
 # -----------------------------------------------------------------------------
 # Recipes 
 # -----------------------------------------------------------------------------
@@ -217,16 +218,17 @@ $(OBJECTS): $(OUT_DIR)/%.o: %.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@ 								\
 		  -I$(call get-include-path,$<)
 
-$(OUT_DIR)/$(DEPENDENCIES): $(OUT_DIR)/%.d: %.c
+$(DEPENDENCIES): $(OUT_DIR)/%.d: %.c
 	@$(CC) $(CFLAGS) -I$(call get-include-path,$<)							\
 		   $(CPPFLAGS) $(TARGET_ARCH) -MG -MM $<	| 						\
 	$(SED) 's,\($(notdir $*)\.o\) *:,$(dir $@)\1 $@: ,' > $@.tmp
 	@$(MV) $@.tmp $@
+
 # -----------------------------------------------------------------------------
 # Commands
 # -----------------------------------------------------------------------------
 .PHONY: build
-build: $(OUT_DIR)/$(OUTPUT)
+build: $(DEPENDENCIES) $(OUT_DIR)/$(OUTPUT)
 
 .PHONY: compile
 compile: $(OBJECTS)
@@ -263,9 +265,6 @@ bear: clean
 .PHONY: all
 all: build
 
-.PHONY: library
-library: 
-
 .PHONY: clean
 clean:
 	$(RM) -r $(OUT_DIR)
@@ -300,6 +299,7 @@ example:
 
 	$(MV) $(notdir $(BLDFILE)) $(CNF_DIR)/
 	$(MV) main.c $(SRC_DIR)
+
 # -----------------------------------------------------------------------------
 # Include
 # -----------------------------------------------------------------------------
