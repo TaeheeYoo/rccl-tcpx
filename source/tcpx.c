@@ -185,6 +185,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 
 	handle = (struct nccl_net_socket_handle *)opaque_handle;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	if (dev < 0 || dev >= ncclNetIfs) {
 		printf("NET/TCPX: tcpx_listen dev=%d ncclNetIfs=%d",
 		       dev, ncclNetIfs);
@@ -284,6 +285,7 @@ __hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
 	ncclResult_t retval;
 	size_t addrlen;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	comm = calloc(1, sizeof(struct nccl_net_socket_comm));
 	if (comm == NULL) {
 		retval = ncclInternalError;
@@ -319,6 +321,7 @@ __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 	struct nccl_net_socket_comm *rcomm;
 	ncclResult_t retval;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	rcomm = calloc(1, sizeof(struct nccl_net_socket_comm));
 	if (rcomm == NULL) {
 		retval = ncclInternalError;
@@ -370,6 +373,7 @@ __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
 	struct nccl_net_socket_comm *comm = sendComm;
 	struct nccl_net_socket_request *req;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
 		if (req->used != 0)
@@ -396,6 +400,7 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 	struct nccl_net_socket_comm *comm = recvComm;
 	struct nccl_net_socket_request *req;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
 		if (req->used != 0)
@@ -430,6 +435,7 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 	int data = req->size;
 	int len;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	if (req == NULL)
 		return ncclInternalError;
 
@@ -470,6 +476,7 @@ __hidden ncclResult_t pluginCloseSend(void* sendComm)
 {
 	struct nccl_net_socket_comm *comm = sendComm;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	close(comm->fd);
 	free(comm);
 
@@ -480,6 +487,7 @@ __hidden ncclResult_t pluginCloseRecv(void* recvComm)
 {
 	struct nccl_net_socket_comm *comm = recvComm;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	close(comm->fd);
 	free(comm);
 
@@ -490,6 +498,7 @@ __hidden ncclResult_t pluginCloseListen(void* listenComm)
 {
 	struct nccl_net_socket_comm *comm = listenComm;
 
+	printf("[TEST]%s %u \n", __func__, __LINE__);
 	close(comm->fd);
 	free(comm);
 
