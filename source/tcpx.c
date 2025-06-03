@@ -116,14 +116,14 @@ __hidden ncclResult_t pluginPciPath(int dev, char** path)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
 
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginPtrSupport(int dev, int* supportedTypes)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
 
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginGetProperties(int dev, ncclNetProperties_t* props)
@@ -347,7 +347,7 @@ __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
 				  int type, void** mhandle)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginRegMrDmaBuf(void* collComm, void* data, size_t size,
@@ -355,13 +355,13 @@ __hidden ncclResult_t pluginRegMrDmaBuf(void* collComm, void* data, size_t size,
 					void** mhandle)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginDeregMr(void* collComm, void* mhandle)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
@@ -413,16 +413,13 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 	}
 
 	return ncclInternalError;
-
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginIflush(void* recvComm, int n, void** data,
 				   int* sizes, void** mhandles, void** request)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
@@ -471,39 +468,51 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 
 __hidden ncclResult_t pluginCloseSend(void* sendComm)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_comm *comm = sendComm;
+
+	close(comm->fd);
+	free(comm);
+
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginCloseRecv(void* recvComm)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_comm *comm = recvComm;
+
+	close(comm->fd);
+	free(comm);
+
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginCloseListen(void* listenComm)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	struct nccl_net_socket_comm *comm = listenComm;
+
+	close(comm->fd);
+	free(comm);
+
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginIrecvConsumed(void* recvComm, int n, void* request)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginGetDeviceMr(void* comm, void* mhandle,
 					void** dptr_mhandle)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginMakeVDevice(int* d, ncclNetVDeviceProps_t* props)
 {
 	printf("[TEST]%s %u \n", __func__, __LINE__);
-	return ncclInternalError;
+	return ncclSuccess;
 }
 
 #define PLUGIN_NAME "tcpx"
