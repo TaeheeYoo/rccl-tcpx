@@ -1,6 +1,13 @@
 #include "tcpx.h"
 
+#include "net_v9.h"
+#include "net_v8.h"
+
 #include "Cruzer-S/logger/logger.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
@@ -579,4 +586,57 @@ ncclNet_v9_t ncclNetPlugin_v9 = {
 	.getDeviceMr = pluginGetDeviceMr,
 	.irecvConsumed = pluginIrecvConsumed,
 	.makeVDevice   = pluginMakeVDevice,
+};
+
+__hidden ncclResult_t pluginGetProperties_v8(int n, ncclNetProperties_v8_t *props)
+{
+	return ncclNetPlugin_v9.getProperties(
+		n, (ncclNetProperties_v9_t *) props
+	);
+}
+
+__hidden ncclResult_t pluginIsend_v8(void* sendComm, void* data, int size,
+				  int tag, void* mhandle, void** request)
+{
+	size_t new_size = size;
+
+	return ncclNetPlugin_v9.isend(
+		sendComm, data, new_size, tag, mhandle, request
+	);
+}
+
+__hidden ncclResult_t pluginIrecv_v8(void* recvComm, int n, void** data,
+				  int* sizes, int* tags, void** mhandles,
+				  void** request)
+{
+	size_t new_sizes[n];
+
+	for (int i = 0; i < n; i++)
+		new_sizes[i] = sizes[i];
+
+	return ncclNetPlugin_v9.irecv(
+		recvComm, n, data, new_sizes, tags, mhandles, request
+	);
+}
+
+ncclNet_v8_t ncclNetPlugin_v8 = {
+	.name = PLUGIN_NAME,
+	.init = tcpx_init,
+	.devices = pluginDevices,
+	.getProperties = pluginGetProperties_v8,
+	.listen = tcpx_listen,
+	.connect = pluginConnect,
+	.accept = pluginAccept,
+	.regMr = pluginRegMr,
+	.regMrDmaBuf = pluginRegMrDmaBuf,
+	.deregMr = pluginDeregMr,
+	.isend = pluginIsend_v8,
+	.irecv = pluginIrecv_v8,
+	.iflush = pluginIflush,
+	.test = pluginTest,
+	.closeSend = pluginCloseSend,
+	.closeRecv = pluginCloseRecv,
+	.closeListen = pluginCloseListen,
+	.getDeviceMr = pluginGetDeviceMr,
+	.irecvConsumed = pluginIrecvConsumed,
 };

@@ -1,8 +1,6 @@
 #ifndef THIRD_PARTY_GPUS_RCCL_TCPX_PLUGIN_UTIL_H_
 #define THIRD_PARTY_GPUS_RCCL_TCPX_PLUGIN_UTIL_H_
 
-#include <string.h>
-#include <stdio.h>
 #include "net.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -14,7 +12,6 @@
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <net/if.h>
-#include <errno.h>
 
 #define __hidden __attribute__ ((visibility("hidden")))
 #define NCCL_PLUGIN_MAX_RECVS   1
