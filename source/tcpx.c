@@ -1,5 +1,7 @@
 #include "tcpx.h"
 
+#include "Cruzer-S/logger/logger.h"
+
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
 
@@ -62,49 +64,53 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 	char *token;
 
 	if (!ifs) {
-		printf("NET/TCPX tcpx interfaces are not defined\n");
+		fprintf(stderr, "NET/TCPX tcpx interfaces are not defined\n");
 		return ncclInternalError;
-	} else {
-		if (getifaddrs(&ifaddr) == -1) {
-			printf("NET/TCPX Can't get interfaces\n");
-			return ncclInternalError;
-		}
-
-		token = strtok(ifs, ",");
-		while (token != NULL && count < MAX_IFS) {
-			for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-				if (ifa->ifa_addr &&
-				    !strcmp(ifa->ifa_name, token)) {
-					if (ifa->ifa_addr->sa_family != AF_INET)
-						continue;
-
-					memcpy(&tcpx_devs[i].addr,
-					       ifa->ifa_addr,
-					       sizeof(struct sockaddr));
-					strcpy(tcpx_devs[i].dev_name, token);
-					printf("NET/TCPX Interface %d: %s\n",
-					       i + 1, tcpx_devs[i].dev_name);
-					i++;
-					ncclNetIfs++;
-					goto next;
-				}
-			}
-next:
-			count++;
-			token = strtok(NULL, ",");
-		}
-
-		if (i == MAX_IFS) {
-			printf("Maximum number of interfaces reached.\n");
-		}
 	}
+
+	if (getifaddrs(&ifaddr) == -1) {
+		fprintf(stderr, "NET/TCPX Can't get interfaces\n");
+		return ncclInternalError;
+	}
+
+	if (!logger_initialize()) {
+		fprintf(stderr, "failed to logger_initialize(): %s",
+				strerror(errno));
+	}
+
+	token = strtok(ifs, ",");
+	while (token != NULL && count < MAX_IFS) {
+		for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+			if (ifa->ifa_addr &&
+			    !strcmp(ifa->ifa_name, token)) {
+				if (ifa->ifa_addr->sa_family != AF_INET)
+					continue;
+
+				memcpy(&tcpx_devs[i].addr,
+				       ifa->ifa_addr,
+				       sizeof(struct sockaddr));
+				strcpy(tcpx_devs[i].dev_name, token);
+				log(INFO, "NET/TCPX Interface %d: %s",
+					  i + 1, tcpx_devs[i].dev_name);
+				i++;
+				ncclNetIfs++;
+				goto next;
+			}
+		}
+
+	next:	count++;
+		token = strtok(NULL, ",");
+	}
+
+	if (i == MAX_IFS)
+		log(WARN, "Maximum number of interfaces reached.");
 
 	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginDevices(int* ndev)
 {
-	printf("[TEST]%s %u\n", __func__, __LINE__);
+	log(INFO, "Set devices");
 
 	/* interface index? */
 	*ndev = ncclNetIfs;
@@ -114,20 +120,22 @@ __hidden ncclResult_t pluginDevices(int* ndev)
 
 __hidden ncclResult_t pluginPciPath(int dev, char** path)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Set PCI path: %s", path);
 
 	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginPtrSupport(int dev, int* supportedTypes)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Return Supported Types");
 
 	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginGetProperties(int dev, ncclNetProperties_t* props)
 {
+	log(INFO, "Return properties");
+
 	/* Below are default values, if unsure don't change. */
 	props->name = "Example";
 	/* Fill for proper topology detection, e.g.
@@ -171,6 +179,7 @@ __hidden ncclResult_t pluginGetProperties(int dev, ncclNetProperties_t* props)
 	/* maximum transfer sizes the plugin can handle */
 	props->maxP2pBytes = NCCL_MAX_NET_SIZE_BYTES;
 	props->maxCollBytes = NCCL_MAX_NET_SIZE_BYTES;
+
 	return ncclSuccess;
 }
 
@@ -185,17 +194,16 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 
 	handle = (struct nccl_net_socket_handle *)opaque_handle;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
 	if (dev < 0 || dev >= ncclNetIfs) {
-		printf("NET/TCPX: tcpx_listen dev=%d ncclNetIfs=%d",
-		       dev, ncclNetIfs);
+		log(WARN, "tcpx_listen dev=%d ncclNetIfs=%d",
+      			   dev, ncclNetIfs);
 		retval = ncclInternalError;
 		goto RETURN_ERROR;
 	}
 
 	comm = calloc(1, sizeof(struct nccl_net_socket_listen_comm));
 	if (!comm) {
-		printf("NET/TCPX: Failed to allocate memory\n");
+		log(PWARN, "Failed to allocate memory: ");
 		retval = ncclInternalError;
 		goto RETURN_ERROR;
 	}
@@ -205,15 +213,14 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	       sizeof(handle->connect_addr));
 
 	family = handle->connect_addr.sa.sa_family;
-	printf("[TEST]%s %u dev=%d family = %d \n", __func__, __LINE__, dev, family);
+	log(INFO, "dev=%d family = %d", dev, family);
 	salen = (family == AF_INET) ? sizeof(struct sockaddr_in) :
 				      sizeof(struct sockaddr_in6);
 
 	/* Create socket and bind it to a port */
 	sockfd = socket(family, SOCK_STREAM, 0);
 	if (sockfd == -1) {
-		printf("NET/TCPX: Socket creation failed : %s\n",
-		       strerror(errno));
+		log(PWARN, "Failed to socket(): ");
 		retval = ncclSystemError;
 		goto FREE_COMM;
 	}
@@ -229,7 +236,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 				 sizeof(opt));
 #endif
 		if (err) {
-			printf("NET/TCPX : setsockopt failed\n");
+			log(PWARN, "Failed to setsockopt: ");
 			retval = ncclSystemError;
 			goto CLOSE_SOCKFD;
 		}
@@ -237,7 +244,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 
 	err = bind(sockfd, &handle->connect_addr.sa, salen);
 	if (err) {
-		printf("NET/TCPX : bind failed\n");
+		log(PWARN, "Failed to bind(): ");
 		retval = ncclSystemError;
 		goto CLOSE_SOCKFD;
 	}
@@ -246,7 +253,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	socklen_t size = salen;
 	err = getsockname(sockfd, &handle->connect_addr.sa, &size);
 	if (err) {
-		printf("NET/TCPX : getsockname failed\n");
+		log(PWARN, "Failed to getsockname(): ");
 		retval = ncclSystemError;
 		goto CLOSE_SOCKFD;
 	}
@@ -256,7 +263,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	 */
 	err = listen(sockfd, 16384);
 	if (err) {
-		printf("NET/TCPX : listen failed\n");
+		log(PWARN, "Failed to listen(): ");
 		retval = ncclSystemError;
 		goto CLOSE_SOCKFD;
 	}
@@ -285,15 +292,17 @@ __hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
 	ncclResult_t retval;
 	size_t addrlen;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Try to connect");
 	comm = calloc(1, sizeof(struct nccl_net_socket_comm));
 	if (comm == NULL) {
+		log(PWARN, "Failed to calloc(): ");
 		retval = ncclInternalError;
 		goto RETURN_ERROR;
 	}
 
 	comm->fd = socket(handle->connect_addr.sa.sa_family, SOCK_STREAM, 0);
 	if (comm->fd == -1) {
+		log(PWARN, "Failed to socket(): ");
 		retval = ncclSystemError;
 		goto FREE_COMM;
 	}
@@ -301,6 +310,7 @@ __hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
 	addrlen = (handle->connect_addr.sa.sa_family == AF_INET) ?
 		  sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
 	if (connect(comm->fd, &handle->connect_addr.sa, addrlen) == -1) {
+		log(PWARN, "Failed to connect(): ");
 		retval = ncclInternalError;
 		goto CLOSE_COMM_FD;
 	}
@@ -321,9 +331,11 @@ __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 	struct nccl_net_socket_comm *rcomm;
 	ncclResult_t retval;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Try to accept");
+
 	rcomm = calloc(1, sizeof(struct nccl_net_socket_comm));
 	if (rcomm == NULL) {
+		log(PWARN, "Failed to calloc(): ");
 		retval = ncclInternalError;
 		goto RETURN_ERROR;
 	}
@@ -334,6 +346,7 @@ __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 
 	rcomm->fd = accept(lcomm->fd, NULL, 0);
 	if (rcomm->fd == -1) {
+		log(PWARN, "Failed to accept(): ");
 		retval = ncclInternalError;
 		goto FREE_RCOMM;
 	}
@@ -349,7 +362,14 @@ RETURN_ERROR:	return retval;
 __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
 				  int type, void** mhandle)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "pluginRegMr");
+	log(INFO, "\tcollComm: %p\n"
+     		  "\tdata: %p\n", 
+		  "\tsize: %zu\n",
+     		  "\ttype: %d\n",
+     		  "\tmhandle: %p",
+		  collComm, data, size, type, mhandle);
+
 	return ncclSuccess;
 }
 
@@ -357,13 +377,13 @@ __hidden ncclResult_t pluginRegMrDmaBuf(void* collComm, void* data, size_t size,
 					int type, uint64_t offset, int fd,
 					void** mhandle)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "pluginRegMrDmaBuf");
 	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginDeregMr(void* collComm, void* mhandle)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "pluginDeregMr");
 	return ncclSuccess;
 }
 
@@ -373,7 +393,8 @@ __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
 	struct nccl_net_socket_comm *comm = sendComm;
 	struct nccl_net_socket_request *req;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Sending data");
+
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
 		if (req->used != 0)
@@ -390,6 +411,8 @@ __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
 		return ncclSuccess;
 	}
 
+	log(WARN, "Maximum request queue!");
+
 	return ncclInternalError;
 }
 
@@ -400,7 +423,8 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 	struct nccl_net_socket_comm *comm = recvComm;
 	struct nccl_net_socket_request *req;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Receive data");
+
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
 		if (req->used != 0)
@@ -417,13 +441,15 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 		return ncclSuccess;
 	}
 
+	log(WARN, "Maximum request queue!");
+
 	return ncclInternalError;
 }
 
 __hidden ncclResult_t pluginIflush(void* recvComm, int n, void** data,
 				   int* sizes, void** mhandles, void** request)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Flush data");
 	return ncclSuccess;
 }
 
@@ -435,7 +461,8 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 	int data = req->size;
 	int len;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Plugin Test");
+
 	if (req == NULL)
 		return ncclInternalError;
 
@@ -476,7 +503,8 @@ __hidden ncclResult_t pluginCloseSend(void* sendComm)
 {
 	struct nccl_net_socket_comm *comm = sendComm;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Close send");
+
 	close(comm->fd);
 	free(comm);
 
@@ -487,7 +515,8 @@ __hidden ncclResult_t pluginCloseRecv(void* recvComm)
 {
 	struct nccl_net_socket_comm *comm = recvComm;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Close receive");
+
 	close(comm->fd);
 	free(comm);
 
@@ -498,7 +527,8 @@ __hidden ncclResult_t pluginCloseListen(void* listenComm)
 {
 	struct nccl_net_socket_comm *comm = listenComm;
 
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Close listen");
+
 	close(comm->fd);
 	free(comm);
 
@@ -507,20 +537,20 @@ __hidden ncclResult_t pluginCloseListen(void* listenComm)
 
 __hidden ncclResult_t pluginIrecvConsumed(void* recvComm, int n, void* request)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "Receive consumed");
 	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginGetDeviceMr(void* comm, void* mhandle,
 					void** dptr_mhandle)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "GetDeviceMr");
 	return ncclSuccess;
 }
 
 __hidden ncclResult_t pluginMakeVDevice(int* d, ncclNetVDeviceProps_t* props)
 {
-	printf("[TEST]%s %u \n", __func__, __LINE__);
+	log(INFO, "MakeVDevice");
 	return ncclSuccess;
 }
 
