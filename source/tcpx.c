@@ -363,7 +363,7 @@ __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
 				  int type, void** mhandle)
 {
 	log(INFO, "pluginRegMr");
-	log(INFO, "\tcollComm: %p\n"
+	log(INFO, "\n\tcollComm: %p\n"
      		  "\tdata: %p\n", 
 		  "\tsize: %zu\n",
      		  "\ttype: %d\n",
