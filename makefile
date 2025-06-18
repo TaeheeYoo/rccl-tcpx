@@ -50,7 +50,7 @@ CTAGS_OUT := tags
 COMPILE_DB_OUT := compile_commands.json
 
 # Constants
-SYNC_TIME := $(shell date)
+SYNC_TIME := $(shell LC_ALL=C date)
 
 # Internal
 .DEFAULT_GOAL = help
