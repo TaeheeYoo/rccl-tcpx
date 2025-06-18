@@ -448,6 +448,36 @@ __hidden ncclResult_t pluginIflush(void* recvComm, int n, void** data,
 	return ncclSuccess;
 }
 
+int recv_all(int fd, void *data, int size)
+{
+	int recv_len = 0;
+
+	while (recv_len < size) {
+		int len = recv(fd, data + recv_len, size - recv_len, 0);
+		if (len <= 0)
+			return len;
+
+		recv_len += len;
+	}
+
+	return recv_len;
+}
+
+int send_all(int fd, void *data, int size)
+{
+	int send_len = 0;
+
+	while (send_len < size) {
+		int len = send(fd, data + send_len, size - send_len, 0);
+		if (len <= 0)
+			return len;
+
+		send_len += len;
+	}
+
+	return send_len;
+}
+
 __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 {
 	struct nccl_net_socket_request *req = request;
@@ -458,34 +488,59 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 
 	log(INFO, "Plugin Test");
 
-	if (req == NULL)
+	if (req == NULL) {
+		log(WARN, "failed to pluginTest(): request is NULL");
 		return ncclInternalError;
+	}
 
-	if (req->used == 0)
+	if (req->used == 0) {
+		log(WARN, "failed to pluginTest(): used is zero");
 		return ncclInvalidUsage;
+	}
 
 	if (req->op == NCCL_SOCKET_RECV) {
-		len = recv(comm->fd, &data, sizeof(int), 0);
-		if (len != sizeof(int))
+		len = recv_all(comm->fd, &data, sizeof(int));
+		if (len < 0) {
+			log(PWARN, "failed to recv_all(): ");
 			return ncclInternalError;
+		}
+
+		if (len == 0) {
+			log(WARN, "get close from remote()");
+			return ncclRemoteError;
+		}
 
 		if (data > req->size)
 			return ncclInvalidUsage;
 	} else if (req->op == NCCL_SOCKET_SEND) {
-		len = send(comm->fd, &data, sizeof(int), 0);
-		if (len != sizeof(int))
+		len = send_all(comm->fd, &data, sizeof(int));
+		if (len < 0) {
+			log(PWARN, "failed to recv_all(): ");
 			return ncclInternalError;
+		}
+
+		if (len == 0) {
+			log(WARN, "get close from remote()");
+			return ncclRemoteError;
+		}
 	}
 
 	req->size = data;
 
 	if (req->op == NCCL_SOCKET_RECV)
-		len = recv(comm->fd, req->data, req->size, 0);
+		len = recv_all(comm->fd, req->data, req->size);
 	else if (req->op == NCCL_SOCKET_SEND)
-		len = send(comm->fd, req->data, req->size, 0);
+		len = send_all(comm->fd, req->data, req->size);
 
-	if (len != req->size)
+	if (len < 0) {
+		log(PWARN, "failed to recv_all(): ");
 		return ncclInternalError;
+	}
+
+	if (len == 0) {
+		log(WARN, "get close from remote()");
+		return ncclRemoteError;
+	}
 
 	*done = 1;
 	*size = req->size;
