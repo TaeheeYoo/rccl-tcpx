@@ -139,7 +139,7 @@ __hidden ncclResult_t pluginPtrSupport(int dev, int* supportedTypes)
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginGetProperties(int dev, ncclNetProperties_t* props)
+__hidden ncclResult_t pluginGetProperties_v8(int dev, ncclNetProperties_v8_t* props)
 {
 	log(INFO, "Return properties");
 
@@ -159,10 +159,6 @@ __hidden ncclResult_t pluginGetProperties(int dev, ncclNetProperties_t* props)
 	 * If set to 0, user buffer registration may be disabled.
 	 */
 	props->regIsGlobal = 0;
-	/* Force flush after receive. Needed if the control path and data
-	 * path use a different path to the GPU
-	 */
-	props->forceFlush = 0;
 	/* Speed in *Mbps*. 100000 means 100G */
 	props->speed = 100000;
 	/* Port number, used in conjunction with guid */
@@ -178,14 +174,6 @@ __hidden ncclResult_t pluginGetProperties(int dev, ncclNetProperties_t* props)
 	/* Coupling with NCCL network device-side code. */
 	props->netDeviceType = NCCL_NET_DEVICE_HOST;
 	props->netDeviceVersion = NCCL_NET_DEVICE_INVALID_VERSION;
-	/* Used to tell NCCL core whether this is a virtual device fusing
-	 * multiple physical devices.
-	 */
-	props->vProps.ndevs = 1;
-	props->vProps.devs[0] = dev;
-	/* maximum transfer sizes the plugin can handle */
-	props->maxP2pBytes = NCCL_MAX_NET_SIZE_BYTES;
-	props->maxCollBytes = NCCL_MAX_NET_SIZE_BYTES;
 
 	return ncclSuccess;
 }
@@ -563,13 +551,64 @@ __hidden ncclResult_t pluginMakeVDevice(int* d, ncclNetVDeviceProps_t* props)
 	return ncclSuccess;
 }
 
+__hidden ncclResult_t pluginGetProperties_v9(int dev, ncclNetProperties_v9_t *props)
+{
+	log(INFO, "Return properties");
+
+	/* Below are default values, if unsure don't change. */
+	props->name = "Example";
+	/* Fill for proper topology detection, e.g.
+	 * /sys/devices/pci0000:00/0000:00:10.0/0000:0b:00.0
+	 */
+	props->pciPath = NULL;
+	/* Only used to detect NICs with multiple PCI attachments. */
+	props->guid = 0;
+	/* Add NCCL_PTR_CUDA if GPU Direct RDMA is supported and regMr can
+	 * take CUDA pointers.
+	 */
+	props->ptrSupport = NCCL_PTR_HOST;
+	/* If you regMr has a fast registration cache, set to 1.
+	 * If set to 0, user buffer registration may be disabled.
+	 */
+	props->regIsGlobal = 0;
+	/* Force flush after receive. Needed if the control path and data
+	 * path use a different path to the GPU
+	 */
+	props->forceFlush = 0;
+	/* Speed in *Mbps*. 100000 means 100G */
+	props->speed = 100000;
+	/* Port number, used in conjunction with guid */
+	props->port = 0;
+	/* Custom latency (used to help tuning if latency is high.
+	 * If set to 0, use default NCCL values.
+	 */
+	props->latency = 0;
+	/* Maximum number of comm objects we can create. */
+	props->maxComms = 1024*1024;
+	/* Maximum number of receive operations taken by irecv(). */
+	props->maxRecvs = NCCL_PLUGIN_MAX_RECVS;
+	/* Coupling with NCCL network device-side code. */
+	props->netDeviceType = NCCL_NET_DEVICE_HOST;
+	props->netDeviceVersion = NCCL_NET_DEVICE_INVALID_VERSION;
+	/* Used to tell NCCL core whether this is a virtual device fusing
+	 * multiple physical devices.
+	 */
+	props->vProps.ndevs = 1;
+	props->vProps.devs[0] = dev;
+	/* maximum transfer sizes the plugin can handle */
+	props->maxP2pBytes = NCCL_MAX_NET_SIZE_BYTES;
+	props->maxCollBytes = NCCL_MAX_NET_SIZE_BYTES;
+
+	return ncclSuccess;
+}
+
 #define PLUGIN_NAME "tcpx"
 
 ncclNet_v9_t ncclNetPlugin_v9 = {
 	.name = PLUGIN_NAME,
 	.init = tcpx_init,
 	.devices = pluginDevices,
-	.getProperties = pluginGetProperties,
+	.getProperties = pluginGetProperties_v9,
 	.listen = tcpx_listen,
 	.connect = pluginConnect,
 	.accept = pluginAccept,
@@ -587,13 +626,6 @@ ncclNet_v9_t ncclNetPlugin_v9 = {
 	.irecvConsumed = pluginIrecvConsumed,
 	.makeVDevice   = pluginMakeVDevice,
 };
-
-__hidden ncclResult_t pluginGetProperties_v8(int n, ncclNetProperties_v8_t *props)
-{
-	return ncclNetPlugin_v9.getProperties(
-		n, (ncclNetProperties_v9_t *) props
-	);
-}
 
 __hidden ncclResult_t pluginIsend_v8(void* sendComm, void* data, int size,
 				  int tag, void* mhandle, void** request)
