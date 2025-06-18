@@ -394,6 +394,7 @@ __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
 	struct nccl_net_socket_request *req;
 
 	log(INFO, "Sending data");
+	log(INFO, "data: %p\tsize: %zu", data, size);
 
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
@@ -424,6 +425,7 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 	struct nccl_net_socket_request *req;
 
 	log(INFO, "Receive data");
+	log(INFO, "data: %p\tsize: %zu", data[0], sizes[0]);
 
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
