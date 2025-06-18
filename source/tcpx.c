@@ -556,6 +556,7 @@ __hidden ncclResult_t pluginCloseSend(void* sendComm)
 	log(INFO, "Close send");
 
 	close(comm->fd);
+
 	free(comm);
 
 	return ncclSuccess;
@@ -567,7 +568,9 @@ __hidden ncclResult_t pluginCloseRecv(void* recvComm)
 
 	log(INFO, "Close receive");
 
+	shutdown(comm->fd, SHUT_RD);
 	close(comm->fd);
+
 	free(comm);
 
 	return ncclSuccess;
@@ -576,8 +579,22 @@ __hidden ncclResult_t pluginCloseRecv(void* recvComm)
 __hidden ncclResult_t pluginCloseListen(void* listenComm)
 {
 	struct nccl_net_socket_comm *comm = listenComm;
+	char temp[1];
+	ssize_t ret;
 
 	log(INFO, "Close listen");
+
+	ret = recv(comm->fd, temp, 1, 0);
+  	if (ret == 0) {
+		log(INFO, "pluginCloseListen: peer closed, exiting");
+	} else if (ret < 0) {
+		log(PWARN, "recv() failed: ");
+		return ncclSystemError;
+	} else {
+		log(WARN, "pluginCloseListen: got message: %c", temp[0]);
+	}
+	
+	close(comm->fd);
 
 	close(comm->fd);
 	free(comm);
