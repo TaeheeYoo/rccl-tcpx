@@ -358,12 +358,12 @@ __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
 				  int type, void** mhandle)
 {
 	log(INFO, "pluginRegMr");
-	log(INFO, "\n\tcollComm: %p\n"
-     		  "\tdata: %p\n", 
-		  "\tsize: %zu\n",
-     		  "\ttype: %d\n",
-     		  "\tmhandle: %p",
-		  collComm, data, size, type, mhandle);
+	log(INFO, "\tcollComm: %p", collComm);
+	log(INFO, "\tdata: %p", data); 
+	log(INFO, "\tsize: %zu", size);
+	log(INFO, "\ttype: %d", type);
+
+	*mhandle = data;
 
 	return ncclSuccess;
 }
