@@ -161,7 +161,7 @@ __hidden ncclResult_t pluginGetProperties_v8(int dev, ncclNetProperties_v8_t* pr
 	/* Add NCCL_PTR_CUDA if GPU Direct RDMA is supported and regMr can
 	 * take CUDA pointers.
 	 */
-	props->ptrSupport = NCCL_PTR_HOST;
+	props->ptrSupport = NCCL_PTR_HOST | NCCL_PTR_CUDA;
 	/* If you regMr has a fast registration cache, set to 1.
 	 * If set to 0, user buffer registration may be disabled.
 	 */
@@ -244,9 +244,6 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 			goto CLOSE_SOCKFD;
 		}
 	}
-
- 	addr = &handle->connect_addr.sin;
-	addr->sin_port = sport;
 
 	err = bind(sockfd, &handle->connect_addr.sa, salen);
 	if (err) {
