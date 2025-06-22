@@ -627,7 +627,7 @@ __hidden ncclResult_t pluginGetProperties_v9(int dev, ncclNetProperties_v9_t *pr
 	/* Add NCCL_PTR_CUDA if GPU Direct RDMA is supported and regMr can
 	 * take CUDA pointers.
 	 */
-	props->ptrSupport = NCCL_PTR_HOST;
+	props->ptrSupport = NCCL_PTR_HOST | NCCL_PTR_CUDA;
 	/* If you regMr has a fast registration cache, set to 1.
 	 * If set to 0, user buffer registration may be disabled.
 	 */
