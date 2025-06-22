@@ -80,8 +80,6 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 	if (port)
 		sport = strtol(port, NULL, 10);
 
-	log(INFO, "Port Number: %d", sport);
-
 	if (getifaddrs(&ifaddr) == -1) {
 		fprintf(stderr, "NET/TCPX Can't get interfaces\n");
 		return ncclInternalError;
@@ -91,6 +89,8 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 		fprintf(stderr, "failed to logger_initialize(): %s",
 				strerror(errno));
 	}
+
+	log(INFO, "Port Number: %d", sport);
 
 	token = strtok(ifs, ",");
 	while (token != NULL && count < MAX_IFS) {
