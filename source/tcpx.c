@@ -11,6 +11,7 @@
 
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
+int sport = 50000;
 
 enum nccl_socket_ops {
 	NCCL_SOCKET_SEND = 0,
@@ -66,6 +67,7 @@ static struct tcpx_dev tcpx_devs[MAX_IFS];
 __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 {
 	char* ifs = getenv("NCCL_TCPX_IFNAMES");
+	char *port = getenv("NCCL_TCPX_PORT");
 	struct ifaddrs *ifaddr, *ifa;
 	int i = 0, count = 0;
 	char *token;
@@ -74,6 +76,11 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 		fprintf(stderr, "NET/TCPX tcpx interfaces are not defined\n");
 		return ncclInternalError;
 	}
+
+	if (port)
+		sport = strtol(port, NULL, 10);
+
+	log(INFO, "Port Number: %d", sport);
 
 	if (getifaddrs(&ifaddr) == -1) {
 		fprintf(stderr, "NET/TCPX Can't get interfaces\n");
@@ -182,6 +189,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 				  void **listen_comm)
 {
 	struct nccl_net_socket_listen_comm *comm;
+	struct sockaddr_in *addr;
 	int family, salen, err, sockfd, opt = 1;
 	struct nccl_net_socket_handle* handle;
 	char line[SOCKET_NAME_MAXLEN + 1];
@@ -236,6 +244,9 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 			goto CLOSE_SOCKFD;
 		}
 	}
+
+ 	addr = &handle->connect_addr.sin;
+	addr->sin_port = sport;
 
 	err = bind(sockfd, &handle->connect_addr.sa, salen);
 	if (err) {
