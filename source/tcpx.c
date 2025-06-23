@@ -1,5 +1,7 @@
 #include "tcpx.h"
 
+#include <hip/hip_runtime.h>
+
 #include "net_v9.h"
 #include "net_v8.h"
 
