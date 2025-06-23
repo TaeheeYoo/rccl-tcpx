@@ -102,7 +102,7 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
 
-			memcpy(&tcpx_devs[ncclNetIfs].addr, ifa->ifa_addr,
+			memcpy(&tcpx_devs[ncclNetIfs].addr.sa, ifa->ifa_addr,
 			       sizeof(struct sockaddr));
 			strcpy(tcpx_devs[ncclNetIfs].dev_name, token);
 
@@ -155,7 +155,6 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 				  void **listen_comm)
 {
 	struct nccl_net_socket_listen_comm *comm;
-	struct sockaddr_in *addr;
 	int family, salen, err, sockfd, opt = 1;
 	struct nccl_net_socket_handle* handle;
 	char line[SOCKET_NAME_MAXLEN + 1];
