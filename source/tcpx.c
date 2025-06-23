@@ -11,7 +11,6 @@
 
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
-int sport = 50000;
 
 enum nccl_socket_ops {
 	NCCL_SOCKET_SEND = 0,
@@ -72,26 +71,25 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 	int i = 0, count = 0;
 	char *token;
 
-	if (!ifs) {
-		fprintf(stderr, "NET/TCPX tcpx interfaces are not defined\n");
+	if (!logger_initialize()) {
+		logFunction(
+			NCCL_LOG_ABORT, NCCL_INIT, __FILE__, __LINE__,
+	      		"failed to logger_initialize(): %s", strerror(errno)
+		);
 		return ncclInternalError;
 	}
 
-	if (port)
-		sport = strtol(port, NULL, 10);
+	if (!ifs) {
+		log(ERRN, "NET/TCPX tcpx interfaces are not defined.");
+		return ncclInternalError;
+	}
 
 	if (getifaddrs(&ifaddr) == -1) {
-		fprintf(stderr, "NET/TCPX Can't get interfaces\n");
+		log(ERRN, "NET/TCPX tcpx interfaces are not defined.");
 		return ncclInternalError;
 	}
 
-	if (!logger_initialize()) {
-		fprintf(stderr, "failed to logger_initialize(): %s",
-				strerror(errno));
-	}
-
-	log(INFO, "Port Number: %d", sport);
-
+	
 	token = strtok(ifs, ",");
 	while (token != NULL && count < MAX_IFS) {
 		for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
@@ -362,11 +360,14 @@ FREE_RCOMM:	free(rcomm);
 RETURN_ERROR:	return retval;
 }
 
-__hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
+__hidden ncclResult_t pluginRegMr(void* internal_comm, void* data, size_t size,
 				  int type, void** mhandle)
 {
+	struct nccl_net_socket_comm *comm = internal_comm;
+
 	log(INFO, "pluginRegMr");
-	log(INFO, "\tcollComm: %p", collComm);
+	log(INFO, "\tcomm->fd: %p", comm->fd);
+	log(INFO, "\tcomm->dev: %p", comm->fd);
 	log(INFO, "\tdata: %p", data); 
 	log(INFO, "\tsize: %zu", size);
 	log(INFO, "\ttype: %d", type);
@@ -374,7 +375,7 @@ __hidden ncclResult_t pluginRegMr(void* collComm, void* data, size_t size,
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginRegMrDmaBuf(void* collComm, void* data, size_t size,
+__hidden ncclResult_t pluginRegMrDmaBuf(void* comm, void* data, size_t size,
 					int type, uint64_t offset, int fd,
 					void** mhandle)
 {
@@ -382,7 +383,7 @@ __hidden ncclResult_t pluginRegMrDmaBuf(void* collComm, void* data, size_t size,
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginDeregMr(void* collComm, void* mhandle)
+__hidden ncclResult_t pluginDeregMr(void* comm, void* mhandle)
 {
 	log(INFO, "pluginDeregMr");
 	return ncclSuccess;
