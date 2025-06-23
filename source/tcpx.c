@@ -9,6 +9,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include <arpa/inet.h>
+
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
 
@@ -209,12 +211,9 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 		goto RETURN_ERROR;
 	}
 
-	comm->fd = -1;
 	memcpy((void *)&handle->connect_addr, &tcpx_devs[dev].addr,
 	       sizeof(handle->connect_addr));
-
 	family = handle->connect_addr.sa.sa_family;
-	log(INFO, "dev=%d family = %d", dev, family);
 	salen = (family == AF_INET) ? sizeof(struct sockaddr_in) :
 				      sizeof(struct sockaddr_in6);
 
@@ -226,21 +225,13 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 		goto FREE_COMM;
 	}
 
-	if (socket_to_port(&handle->connect_addr.sa)) {
-		// Port is forced by env. Make sure we get the port.
-#if defined(SO_REUSEPORT)
-		err = setsockopt(sockfd, SOL_SOCKET,
-				 SO_REUSEADDR | SO_REUSEPORT,
-				 &opt, sizeof(opt));
-#else
-		err = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt,
-				 sizeof(opt));
-#endif
-		if (err) {
-			log(PWARN, "Failed to setsockopt: ");
-			retval = ncclSystemError;
-			goto CLOSE_SOCKFD;
-		}
+	err = setsockopt(sockfd, SOL_SOCKET,
+			 SO_REUSEADDR | SO_REUSEPORT,
+			 &opt, sizeof(opt));
+	log(PWARN, "Failed to setsockopt: ");
+	if (err) {
+		retval = ncclSystemError;
+		goto CLOSE_SOCKFD;
 	}
 
 	err = bind(sockfd, &handle->connect_addr.sa, salen);
@@ -268,14 +259,30 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 		retval = ncclSystemError;
 		goto CLOSE_SOCKFD;
 	}
-	comm->fd = sockfd;
 
+	comm->fd = sockfd;
 	comm->num_socks = 0;
-	comm->num_threads = 1;
+	comm->num_threads = 0;
+	comm->dev = dev;
+
 	handle->num_socks = comm->num_socks;
 	handle->num_threads = comm->num_threads;
-	comm->dev = dev;
+
 	*listen_comm = comm;
+
+	log(INFO, "tcpx_listen() complete");
+	log(INFO, "device: %d", dev);
+	log(INFO, "\tcomm->fd: %d", comm->fd);
+	log(INFO, "\thandle->num_socks: %d", comm->num_socks);
+	log(INFO, "\thandle->num_threads: %d", comm->num_threads);
+	do {
+		char ip_str[INET6_ADDRSTRLEN];
+		struct sockaddr_in *addr_in = &handle->connect_addr.sin;
+		log(INFO, "\thandle->addr: %s:%d",
+      			  inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str)),
+      			  ntohs(addr_in->sin_port)
+		);
+	} while (false);
 
 	return ncclSuccess;
 
