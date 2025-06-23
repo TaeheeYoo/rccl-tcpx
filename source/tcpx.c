@@ -68,7 +68,7 @@ static struct tcpx_dev tcpx_devs[MAX_IFS];
 __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 {
 	char* ifs = getenv("NCCL_TCPX_IFNAMES");
-	struct ifaddrs *ifaddr, *ifa;
+	struct ifaddrs *ifaddr;
 
 	if (!logger_initialize()) {
 		logFunction(
@@ -92,7 +92,10 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 	           token != NULL;
 	  	   token = strtok(NULL, ","))
 	{
-		for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+		for (struct ifaddrs *ifa = ifaddr;
+		     ifa != NULL;
+		     ifa = ifa->ifa_next)
+		{
 			if (!ifa->ifa_addr)
 				continue;
 
@@ -102,6 +105,8 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
 
+			memset(&tcpx_devs[ncclNetIfs].addr, 0x00,
+	  		       sizeof(union socket_address));
 			memcpy(&tcpx_devs[ncclNetIfs].addr.sin, ifa->ifa_addr,
 			       sizeof(struct sockaddr_in));
 			strcpy(tcpx_devs[ncclNetIfs].dev_name, token);
@@ -126,11 +131,10 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 		log(INFO, "\tname: %s", tcpx_devs[i].dev_name);
 		log(INFO, "\tpci_path: %s", tcpx_devs[i].pci_path);
 		do {
-			struct sockaddr_in *addr_in;
+			struct sockaddr_in *addr_in = &tcpx_devs[i].addr.sin;
 			char ip_str[INET6_ADDRSTRLEN];
 			int port;
 
-			addr_in = (struct sockaddr_in *) &tcpx_devs[i].addr.sa;
 			inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
 			port = ntohs(addr_in->sin_port);
 
@@ -176,6 +180,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 		goto RETURN_ERROR;
 	}
 
+	memset(&tcpx_devs[dev].addr, 0x00, sizeof(union socket_address));
 	memcpy((void *)&handle->connect_addr, &tcpx_devs[dev].addr,
 	       sizeof(handle->connect_addr));
 	family = handle->connect_addr.sa.sa_family;
@@ -241,11 +246,10 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	log(INFO, "\thandle->num_socks: %d", comm->num_socks);
 	log(INFO, "\thandle->num_threads: %d", comm->num_threads);
 	do {
-		struct sockaddr_in *addr_in;
+		struct sockaddr_in *addr_in = &handle->connect_addr.sin;
 		char ip_str[INET6_ADDRSTRLEN];
 		int port;
 	
-		addr_in = (struct sockaddr_in *) &handle->connect_addr.sa;
 		inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
 		port = ntohs(addr_in->sin_port);
 
@@ -295,11 +299,10 @@ __hidden ncclResult_t tcpx_connect(int dev, void* opaqueHandle,
 	log(INFO, "tcpx_connect() complete:");
 	log(INFO, "\tcomm->fd: %d", comm->fd);
 	do {
-		struct sockaddr_in *addr_in;
+		struct sockaddr_in *addr_in = &handle->connect_addr.sin;
 		char ip_str[INET6_ADDRSTRLEN];
 		int port;
 		
-		addr_in = (struct sockaddr_in *) &handle->connect_addr.sa;
 		inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
 		port = ntohs(addr_in->sin_port);
 
