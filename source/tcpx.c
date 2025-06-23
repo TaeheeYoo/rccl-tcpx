@@ -180,7 +180,6 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 		goto RETURN_ERROR;
 	}
 
-	memset(&tcpx_devs[dev].addr, 0x00, sizeof(union socket_address));
 	memcpy((void *)&handle->connect_addr, &tcpx_devs[dev].addr,
 	       sizeof(handle->connect_addr));
 	family = handle->connect_addr.sa.sa_family;
