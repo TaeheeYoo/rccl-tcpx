@@ -343,7 +343,7 @@ __hidden ncclResult_t tcpx_accept(void* listenComm, void** recvComm,
 
 	*recvComm = rcomm;
 
-	log(INFO, "tcpx_accept() complete:");
+	log(INFO, "tcpx_accept() complete: lcomm->fd: %d", lcomm->fd);
 	log(INFO, "\trcomm->fd: %d", rcomm->fd);
 	log(INFO, "\trcomm->dev: %d", rcomm->dev);
 	log(INFO, "\trcomm->num_socks: %d", rcomm->num_socks);
