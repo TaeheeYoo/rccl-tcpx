@@ -62,6 +62,16 @@ struct tcpx_dev {
 	char* pci_path;
 };
 
+struct tcpx_mem_handle {
+	void* uptr;
+	void* ptr;
+	int mem_type;
+	int gpu_mem_fd;
+	// int dma_buf_fd;
+	void* gpu;
+	void* gpu_tx;
+};
+
 static struct tcpx_dev tcpx_devs[MAX_IFS];
 
 /* TODO NCCL_TCPX_SUBNET */
@@ -355,17 +365,92 @@ FREE_RCOMM:	free(rcomm);
 RETURN_ERROR:	return retval;
 }
 
-__hidden ncclResult_t pluginRegMr(void* internal_comm, void* data, size_t size,
+tcpxResult_t tcpxRegMr(void* ocomm, void* data, int size, int type,
+			void** mhandle)
+{
+	struct tcpxMemHandle* memHandle;
+	TCPXCHECK(tcpxMemHandleNew(&memHandle));
+	memHandle->mem_type = type;
+
+	switch (type) {
+		case TCPX_PTR_HOST: {
+			memHandle->uptr = data;
+			memHandle->ptr = data;
+			break;
+		}
+		case TCPX_PTR_CUDA: {
+			if (kUseDmaBuf) {
+				if ((uint64_t) data % PAGE_SIZE != 0) {
+					WARN("data not aligned: %p vs 0x%012lu", data, PAGE_SIZE);
+					return tcpxInternalError;
+				}
+				char* nic_pci_addr = strrchr(kTcpxSocketDevs[comm->dev].pci_path, '/') + 1;
+				void* gpu;
+				TCPXCHECK(gpu_current_dev(global.gpus, &gpu));
+				TCPXCHECK(gpu_tx_reg_mr(gpu, &(memHandle->gpu_tx), &(memHandle->gpu_mem_fd),
+						nic_pci_addr, data, size));
+				if (memHandle->gpu_mem_fd < 0) {
+					WARN("get_gpumem_dmabuf_pages_fd() failed!");
+					return tcpxInternalError;
+				}
+			} else {
+				WARN("p2pdma api won't work with only RegMr, due to alignment issue");
+				return tcpxInternalError;
+			}
+
+			memHandle->uptr = data;
+			memHandle->ptr = data;
+			break;
+		}
+		default: {
+			WARN("unknown mem type %d", type);
+			return tcpxInternalError;
+		}
+	}
+
+	*mhandle = memHandle;
+	return tcpxSuccess;
+}
+
+
+__hidden ncclResult_t tcpx_reg_mr(void* internal_comm, void* data, size_t size,
 				  int type, void** mhandle)
 {
 	struct nccl_net_socket_comm *comm = internal_comm;
+	struct tcpx_mem_handle *handle;
 
-	log(INFO, "pluginRegMr");
-	log(INFO, "\tcomm->fd: %p", comm->fd);
-	log(INFO, "\tcomm->dev: %p", comm->fd);
-	log(INFO, "\tdata: %p", data); 
-	log(INFO, "\tsize: %zu", size);
-	log(INFO, "\ttype: %d", type);
+	handle = calloc(sizeof(struct struct tcpx_mem_handle));
+	if (handle == NULL) {
+		log(PERRN, "failed to calloc(): ");
+		return ncclInternalError;
+	} else {
+		handle->gpu = NULL;
+		handle->gpu_mem_fd = -1;
+		handle->gpu = NULL;
+		handle->gpu_tx = NULL;
+	}
+	
+	handle->mem_type = type;
+
+	switch (handle->mem_type) {
+	case TCPX_PTR_HOST:
+		handle->uptr = data;
+		handle->ptr = data;
+		break;
+
+	case TCPX_PTR_CUDA:
+		log(PWARN, "unknown mem_type: %d", handle->mem_type);
+		return ncclInternalError;
+	}
+
+	*mhandle = handle;
+
+	log(INFO, "tcpx_reg_mr() complete: ");
+	log(INFO, "\tcomm->fd: %d", comm->fd);
+	log(INFO, "\tcomm->dev: %d", comm->dev);
+	log(INFO, "\thandle->type: %d", handle->mem_type);
+	log(INFO, "\thandle->ptr: %p", handle->ptr); 
+	log(INFO, "\thandle->uptr: %zu", handle->uptr);
  
 	return ncclSuccess;
 }
@@ -378,9 +463,20 @@ __hidden ncclResult_t pluginRegMrDmaBuf(void* comm, void* data, size_t size,
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginDeregMr(void* comm, void* mhandle)
+__hidden ncclResult_t tcpx_dereg_mr(void* internal_comm, void* mhandle)
 {
-	log(INFO, "pluginDeregMr");
+	struct nccl_net_socket_comm *comm = internal_comm;
+	struct tcpx_mem_handle *handle = mhandle;
+
+	log(INFO, "tcpx_dereg_mr() complete: ");
+	log(INFO, "\tcomm->fd: %d", comm->fd);
+	log(INFO, "\tcomm->dev: %d", comm->dev);
+	log(INFO, "\thandle->type: %d", handle->mem_type);
+	log(INFO, "\thandle->ptr: %p", handle->ptr); 
+	log(INFO, "\thandle->uptr: %zu", handle->uptr);
+
+	free(mhandle);
+
 	return ncclSuccess;
 }
 
@@ -670,9 +766,9 @@ ncclNet_v9_t ncclNetPlugin_v9 = {
 	.listen = tcpx_listen,
 	.connect = tcpx_connect,
 	.accept = tcpx_accept,
-	.regMr = pluginRegMr,
+	.regMr = tcpx_reg_mr,
 	.regMrDmaBuf = pluginRegMrDmaBuf,
-	.deregMr = pluginDeregMr,
+	.deregMr = tcpx_dereg_mr,
 	.isend = pluginIsend,
 	.irecv = pluginIrecv,
 	.iflush = pluginIflush,
@@ -757,9 +853,9 @@ ncclNet_v8_t ncclNetPlugin_v8 = {
 	.listen = tcpx_listen,
 	.connect = tcpx_connect,
 	.accept = tcpx_accept,
-	.regMr = pluginRegMr,
+	.regMr = tcpx_reg_mr,
 	.regMrDmaBuf = pluginRegMrDmaBuf,
-	.deregMr = pluginDeregMr,
+	.deregMr = tcpx_dereg_mr,
 	.isend = pluginIsend_v8,
 	.irecv = pluginIrecv_v8,
 	.iflush = pluginIflush,
