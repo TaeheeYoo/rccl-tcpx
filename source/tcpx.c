@@ -228,8 +228,8 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	err = setsockopt(sockfd, SOL_SOCKET,
 			 SO_REUSEADDR | SO_REUSEPORT,
 			 &opt, sizeof(opt));
-	log(PWARN, "Failed to setsockopt: ");
 	if (err) {
+		log(PWARN, "Failed to setsockopt: ");
 		retval = ncclSystemError;
 		goto CLOSE_SOCKFD;
 	}
