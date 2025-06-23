@@ -135,7 +135,8 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 			char ip_str[INET6_ADDRSTRLEN];
 			int port;
 
-			inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
+			inet_ntop(AF_INET, &addr_in->sin_addr,
+	     			  ip_str, sizeof(ip_str));
 			port = ntohs(addr_in->sin_port);
 
 			log(INFO, "\taddr: %s:%d", ip_str, port);
@@ -249,7 +250,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 		char ip_str[INET6_ADDRSTRLEN];
 		int port;
 	
-		inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
+		inet_ntop(AF_INET, &addr_in->sin_addr, ip_str, sizeof(ip_str));
 		port = ntohs(addr_in->sin_port);
 
 		log(INFO, "\thandle->addr: %s:%d", ip_str, port);
@@ -302,7 +303,7 @@ __hidden ncclResult_t tcpx_connect(int dev, void* opaqueHandle,
 		char ip_str[INET6_ADDRSTRLEN];
 		int port;
 		
-		inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
+		inet_ntop(AF_INET, &addr_in->sin_addr, ip_str, sizeof(ip_str));
 		port = ntohs(addr_in->sin_port);
 
 		log(INFO, "\thandle->addr: %s:%d", ip_str, port);
