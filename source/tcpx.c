@@ -102,8 +102,8 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 			if (ifa->ifa_addr->sa_family != AF_INET)
 				continue;
 
-			memcpy(&tcpx_devs[ncclNetIfs].addr.sa, ifa->ifa_addr,
-			       sizeof(struct sockaddr));
+			memcpy(&tcpx_devs[ncclNetIfs].addr.sin, ifa->ifa_addr,
+			       sizeof(struct sockaddr_in));
 			strcpy(tcpx_devs[ncclNetIfs].dev_name, token);
 
 			ncclNetIfs++;
