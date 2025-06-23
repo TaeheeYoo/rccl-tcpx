@@ -602,11 +602,12 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginCloseSend(void* sendComm)
+__hidden ncclResult_t tcpx_close_send(void* sendComm)
 {
 	struct nccl_net_socket_comm *comm = sendComm;
 
-	log(INFO, "Close send");
+	log(INFO, "tcpx_close_send() complete: ");
+	log(INFO, "\tcomm->fd: %d", comm->fd);
 
 	close(comm->fd);
 	free(comm);
@@ -614,11 +615,12 @@ __hidden ncclResult_t pluginCloseSend(void* sendComm)
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginCloseRecv(void* recvComm)
+__hidden ncclResult_t tcpx_close_recv(void* recvComm)
 {
 	struct nccl_net_socket_comm *comm = recvComm;
 
-	log(INFO, "Close receive");
+	log(INFO, "tcpx_close_recv() complete: ");
+	log(INFO, "\tcomm->fd: %d", comm->fd);
 
 	close(comm->fd);
 	free(comm);
@@ -626,11 +628,12 @@ __hidden ncclResult_t pluginCloseRecv(void* recvComm)
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginCloseListen(void* listenComm)
+__hidden ncclResult_t tcpx_close_listen(void* listenComm)
 {
 	struct nccl_net_socket_comm *comm = listenComm;
 
-	log(INFO, "Close listen");
+	log(INFO, "tcpx_close_listen() complete: ");
+	log(INFO, "\tcomm->fd: %d", comm->fd);
 
 	close(comm->fd);
 	free(comm);
@@ -726,9 +729,9 @@ ncclNet_v9_t ncclNetPlugin_v9 = {
 	.irecv = pluginIrecv,
 	.iflush = pluginIflush,
 	.test = pluginTest,
-	.closeSend = pluginCloseSend,
-	.closeRecv = pluginCloseRecv,
-	.closeListen = pluginCloseListen,
+	.closeSend = tcpx_close_send,
+	.closeRecv = tcpx_close_recv,
+	.closeListen = tcpx_close_listen,
 	.getDeviceMr = pluginGetDeviceMr,
 	.irecvConsumed = pluginIrecvConsumed,
 	.makeVDevice   = pluginMakeVDevice,
@@ -813,9 +816,9 @@ ncclNet_v8_t ncclNetPlugin_v8 = {
 	.irecv = pluginIrecv_v8,
 	.iflush = pluginIflush,
 	.test = pluginTest,
-	.closeSend = pluginCloseSend,
-	.closeRecv = pluginCloseRecv,
-	.closeListen = pluginCloseListen,
+	.closeSend = tcpx_close_send,
+	.closeRecv = tcpx_close_recv,
+	.closeListen = tcpx_close_listen,
 	.getDeviceMr = pluginGetDeviceMr,
 	.irecvConsumed = pluginIrecvConsumed,
 };
