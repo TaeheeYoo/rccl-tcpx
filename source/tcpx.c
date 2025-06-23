@@ -68,10 +68,7 @@ static struct tcpx_dev tcpx_devs[MAX_IFS];
 __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 {
 	char* ifs = getenv("NCCL_TCPX_IFNAMES");
-	char *port = getenv("NCCL_TCPX_PORT");
 	struct ifaddrs *ifaddr, *ifa;
-	int i = 0, count = 0;
-	char *token;
 
 	if (!logger_initialize()) {
 		logFunction(
@@ -82,42 +79,53 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 	}
 
 	if (!ifs) {
-		log(ERRN, "NET/TCPX tcpx interfaces are not defined.");
+		log(ERRN, "interfaces are not defined");
 		return ncclInternalError;
 	}
 
 	if (getifaddrs(&ifaddr) == -1) {
-		log(ERRN, "NET/TCPX tcpx interfaces are not defined.");
+		log(PERRN, "failed to getifaddrs(): ");
 		return ncclInternalError;
 	}
 
-	
-	token = strtok(ifs, ",");
-	while (token != NULL && count < MAX_IFS) {
+	for (char *token = strtok(ifs, ",");
+	           token != NULL;
+	  	   token = strtok(NULL, ","))
+	{
 		for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-			if (ifa->ifa_addr &&
-			    !strcmp(ifa->ifa_name, token)) {
-				if (ifa->ifa_addr->sa_family != AF_INET)
-					continue;
+			if (!ifa->ifa_addr)
+				continue;
 
-				memcpy(&tcpx_devs[i].addr,
-				       ifa->ifa_addr,
-				       sizeof(struct sockaddr));
-				strcpy(tcpx_devs[i].dev_name, token);
-				log(INFO, "NET/TCPX Interface %d: %s",
-					  i + 1, tcpx_devs[i].dev_name);
-				i++;
-				ncclNetIfs++;
-				goto next;
-			}
+			if (strcmp(ifa->ifa_name, token))
+				continue;
+
+			if (ifa->ifa_addr->sa_family != AF_INET)
+				continue;
+
+			memcpy(&tcpx_devs[ncclNetIfs].addr, ifa->ifa_addr,
+			       sizeof(struct sockaddr));
+			strcpy(tcpx_devs[ncclNetIfs].dev_name, token);
+
+			ncclNetIfs++;
+			break;
 		}
 
-	next:	count++;
-		token = strtok(NULL, ",");
+		if (ncclNetIfs >= MAX_IFS) {
+			log(WARN, "Maximum number of interfaces reached.");
+			break;
+		}
 	}
 
-	if (i == MAX_IFS)
-		log(WARN, "Maximum number of interfaces reached.");
+	if (ncclNetIfs == 0) {
+		log(ERRN, "failed to find any matching interfaces");
+		return ncclSystemError;
+	}
+
+	log(INFO, "tcpx_init() complete: %d interface(s)", ncclNetIfs);
+	for (int i = 0; i < ncclNetIfs; i++) {
+		log(INFO, "\tname: %s", tcpx_devs[i].dev_name);
+		log(INFO, "\tpci_path: %s", tcpx_devs[i].pci_path);
+	}
 
 	return ncclSuccess;
 }
@@ -271,17 +279,19 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	*listen_comm = comm;
 
 	log(INFO, "tcpx_listen() complete");
-	log(INFO, "device: %d", dev);
+	log(INFO, "\tdevice: %d", dev);
 	log(INFO, "\tcomm->fd: %d", comm->fd);
 	log(INFO, "\thandle->num_socks: %d", comm->num_socks);
 	log(INFO, "\thandle->num_threads: %d", comm->num_threads);
 	do {
-		char ip_str[INET6_ADDRSTRLEN];
 		struct sockaddr_in *addr_in = &handle->connect_addr.sin;
-		log(INFO, "\thandle->addr: %s:%d",
-      			  inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str)),
-      			  ntohs(addr_in->sin_port)
-		);
+		char ip_str[INET6_ADDRSTRLEN];
+		int port;
+		
+		inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
+		port = ntohs(addr_in->sin_port);
+
+		log(INFO, "\thandle->addr: %s:%d", ip_str, port);
 	} while (false);
 
 	return ncclSuccess;
@@ -300,7 +310,6 @@ __hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
 	ncclResult_t retval;
 	size_t addrlen;
 
-	log(INFO, "Try to connect");
 	comm = calloc(1, sizeof(struct nccl_net_socket_comm));
 	if (comm == NULL) {
 		log(PWARN, "Failed to calloc(): ");
@@ -325,6 +334,19 @@ __hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
 
 	*sendComm = comm;
 
+	log(INFO, "connect() complete");
+	log(INFO, "\tcomm->fd: %d", comm->fd);
+	do {
+		struct sockaddr_in *addr_in = &handle->connect_addr.sin;
+		char ip_str[INET6_ADDRSTRLEN];
+		int port;
+		
+		inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
+		port = ntohs(addr_in->sin_port);
+
+		log(INFO, "\thandle->addr: %s:%d", ip_str, port);
+	} while (false);
+
 	return ncclSuccess;
 
 CLOSE_COMM_FD:	close(comm->fd);
@@ -338,8 +360,6 @@ __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 	struct nccl_net_socket_listen_comm *lcomm = listenComm;
 	struct nccl_net_socket_comm *rcomm;
 	ncclResult_t retval;
-
-	log(INFO, "Try to accept");
 
 	rcomm = calloc(1, sizeof(struct nccl_net_socket_comm));
 	if (rcomm == NULL) {
@@ -360,6 +380,12 @@ __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 	}
 
 	*recvComm = rcomm;
+
+	log(INFO, "accept() complete");
+	log(INFO, "\trcomm->fd: %d", rcomm->fd);
+	log(INFO, "\trcomm->dev: %d", rcomm->dev);
+	log(INFO, "\trcomm->num_socks: %d", rcomm->num_socks);
+	log(INFO, "\trcomm->num_threads: %d", rcomm->num_threads);
 
 	return ncclSuccess;
 
