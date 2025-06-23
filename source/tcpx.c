@@ -410,11 +410,11 @@ __hidden ncclResult_t tcpx_reg_mr(void* internal_comm, void* data, size_t size,
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginRegMrDmaBuf(void* comm, void* data, size_t size,
+__hidden ncclResult_t tcpx_reg_mr_dmabuf(void* comm, void* data, size_t size,
 					int type, uint64_t offset, int fd,
 					void** mhandle)
 {
-	log(INFO, "pluginRegMrDmaBuf");
+	log(WARN, "tcpx_reg_mr_dmabuf() is not implemented yet.");
 	return ncclSuccess;
 }
 
@@ -435,14 +435,11 @@ __hidden ncclResult_t tcpx_dereg_mr(void* internal_comm, void* mhandle)
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
-				  int tag, void* mhandle, void** request)
+__hidden ncclResult_t tcpx_isend(void* sendComm, void* data, size_t size,
+				 int tag, void* mhandle, void** request)
 {
 	struct nccl_net_socket_comm *comm = sendComm;
 	struct nccl_net_socket_request *req;
-
-	log(INFO, "Sending data");
-	log(INFO, "data: %p\tsize: %zu", data, size);
 
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
@@ -457,23 +454,25 @@ __hidden ncclResult_t pluginIsend(void* sendComm, void* data, size_t size,
 
 		*request = req;
 
+		log(INFO, "tcpx_isend() complete:");
+		log(INFO, "\tcomm->dev: %d", comm->dev);
+		log(INFO, "\tcomm->fd: %d", comm->fd);
+		log(INFO, "\tcomm->requests index: %d", i);
+
 		return ncclSuccess;
 	}
 
-	log(WARN, "Maximum request queue!");
+	log(WARN, "failed to tcpx_isend(): request queue is full");
 
 	return ncclInternalError;
 }
 
-__hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
-				  size_t* sizes, int* tags, void** mhandles,
-				  void** request)
+__hidden ncclResult_t tcpx_irecv(void* recvComm, int n, void** data,
+				 size_t* sizes, int* tags, void** mhandles,
+				 void** request)
 {
 	struct nccl_net_socket_comm *comm = recvComm;
 	struct nccl_net_socket_request *req;
-
-	log(INFO, "Receive data");
-	log(INFO, "data: %p\tsize: %zu", data[0], sizes[0]);
 
 	for (int i = 0; i < MAX_REQUESTS; i++) {
 		req = comm->requests + i;
@@ -488,18 +487,23 @@ __hidden ncclResult_t pluginIrecv(void* recvComm, int n, void** data,
 
 		*request = req;
 
+		log(INFO, "tcpx_irecv() complete:");
+		log(INFO, "\tcomm->dev: %d", comm->dev);
+		log(INFO, "\tcomm->fd: %d", comm->fd);
+		log(INFO, "\tcomm->requests index: %d", i);
+
 		return ncclSuccess;
 	}
 
-	log(WARN, "Maximum request queue!");
+	log(WARN, "failed to tcpx_irecv(): request queue is full");
 
 	return ncclInternalError;
 }
 
-__hidden ncclResult_t pluginIflush(void* recvComm, int n, void** data,
-				   int* sizes, void** mhandles, void** request)
+__hidden ncclResult_t tcpx_iflush(void* recvComm, int n, void** data,
+				  int* sizes, void** mhandles, void** request)
 {
-	log(INFO, "Flush data");
+	log(WARN, "tcpx_iflush() is not implemented yet.");
 	return ncclSuccess;
 }
 
@@ -533,7 +537,7 @@ int send_all(int fd, void *data, int size)
 	return send_len;
 }
 
-__hidden ncclResult_t pluginTest(void* request, int* done, int* size)
+__hidden ncclResult_t tcpx_test(void* request, int* done, int* size)
 {
 	struct nccl_net_socket_request *req = request;
 	struct nccl_net_socket_comm *comm = req->comm;
@@ -541,15 +545,13 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 	int data = req->size;
 	int len;
 
-	log(INFO, "Plugin Test");
-
 	if (req == NULL) {
-		log(WARN, "failed to pluginTest(): request is NULL");
+		log(WARN, "failed to tcpx_test(): request is NULL");
 		return ncclInternalError;
 	}
 
 	if (req->used == 0) {
-		log(WARN, "failed to pluginTest(): used is zero");
+		log(WARN, "failed to tcpx_test(): req->used is zero");
 		return ncclInvalidUsage;
 	}
 
@@ -561,7 +563,7 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 		}
 
 		if (len == 0) {
-			log(WARN, "get close from remote()");
+			log(WARN, "failed to recv_all(): connection closed");
 			return ncclRemoteError;
 		}
 
@@ -575,7 +577,7 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 		}
 
 		if (len == 0) {
-			log(WARN, "get close from remote()");
+			log(WARN, "failed to tcpx_test(): connection closed");
 			return ncclRemoteError;
 		}
 	}
@@ -593,13 +595,18 @@ __hidden ncclResult_t pluginTest(void* request, int* done, int* size)
 	}
 
 	if (len == 0) {
-		log(WARN, "get close from remote()");
+		log(WARN, "failed to tcpx_test(): connection closed");
 		return ncclRemoteError;
 	}
 
 	*done = 1;
 	*size = req->size;
 	req->used = 0;
+
+	log(INFO, "tcpx_test() complete:");
+	log(INFO, "\treq->comm->dev: %d", req->comm->dev);
+	log(INFO, "\treq->comm->fd: %d", req->comm->fd);
+	log(INFO, "\treq->op: %d", req->op);
 
 	return ncclSuccess;
 }
@@ -638,29 +645,27 @@ __hidden ncclResult_t tcpx_close_listen(void* listenComm)
 	log(INFO, "\tcomm->fd: %d", comm->fd);
 
 	close(comm->fd);
-
-	for (int i = 0; i < comm->num_socks; i++)
 	free(comm);
 
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginIrecvConsumed(void* recvComm, int n, void* request)
+__hidden ncclResult_t tcpx_irecv_consumed(void* recvComm, int n, void* request)
 {
-	log(INFO, "Receive consumed");
+	log(WARN, "tcpx_irecv_consumed() is not implemented yet.");
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginGetDeviceMr(void* comm, void* mhandle,
+__hidden ncclResult_t tcpx_get_device_mr(void* comm, void* mhandle,
 					void** dptr_mhandle)
 {
-	log(INFO, "GetDeviceMr");
+	log(WARN, "tcpx_get_device_mr() is not implemented yet.");
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginMakeVDevice(int* d, ncclNetVDeviceProps_t* props)
+__hidden ncclResult_t tcpx_make_vdevice(int* d, ncclNetVDeviceProps_t* props)
 {
-	log(INFO, "MakeVDevice");
+	log(WARN, "tcpx_make_vdevice() is not implemented yet.");
 	return ncclSuccess;
 }
 
@@ -727,18 +732,18 @@ ncclNet_v9_t ncclNetPlugin_v9 = {
 	.connect = tcpx_connect,
 	.accept = tcpx_accept,
 	.regMr = tcpx_reg_mr,
-	.regMrDmaBuf = pluginRegMrDmaBuf,
+	.regMrDmaBuf = tcpx_reg_mr_dmabuf,
 	.deregMr = tcpx_dereg_mr,
-	.isend = pluginIsend,
-	.irecv = pluginIrecv,
-	.iflush = pluginIflush,
-	.test = pluginTest,
+	.isend = tcpx_isend,
+	.irecv = tcpx_irecv,
+	.iflush = tcpx_iflush,
+	.test = tcpx_test,
 	.closeSend = tcpx_close_send,
 	.closeRecv = tcpx_close_recv,
 	.closeListen = tcpx_close_listen,
-	.getDeviceMr = pluginGetDeviceMr,
-	.irecvConsumed = pluginIrecvConsumed,
-	.makeVDevice   = pluginMakeVDevice,
+	.getDeviceMr = tcpx_get_device_mr,
+	.irecvConsumed = tcpx_irecv_consumed,
+	.makeVDevice   = tcpx_make_vdevice,
 };
 
 __hidden ncclResult_t tcpx_get_properties_v8(int dev,
@@ -781,7 +786,7 @@ __hidden ncclResult_t tcpx_get_properties_v8(int dev,
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginIsend_v8(void* sendComm, void* data, int size,
+__hidden ncclResult_t tcpx_isend_v8(void* sendComm, void* data, int size,
 				  int tag, void* mhandle, void** request)
 {
 	size_t new_size = size;
@@ -791,9 +796,9 @@ __hidden ncclResult_t pluginIsend_v8(void* sendComm, void* data, int size,
 	);
 }
 
-__hidden ncclResult_t pluginIrecv_v8(void* recvComm, int n, void** data,
-				  int* sizes, int* tags, void** mhandles,
-				  void** request)
+__hidden ncclResult_t tcpx_irecv_v8(void* recvComm, int n, void** data,
+				    int* sizes, int* tags, void** mhandles,
+				    void** request)
 {
 	size_t new_sizes[n];
 
@@ -814,15 +819,15 @@ ncclNet_v8_t ncclNetPlugin_v8 = {
 	.connect = tcpx_connect,
 	.accept = tcpx_accept,
 	.regMr = tcpx_reg_mr,
-	.regMrDmaBuf = pluginRegMrDmaBuf,
+	.regMrDmaBuf = tcpx_reg_mr_dmabuf,
 	.deregMr = tcpx_dereg_mr,
-	.isend = pluginIsend_v8,
-	.irecv = pluginIrecv_v8,
-	.iflush = pluginIflush,
-	.test = pluginTest,
+	.isend = tcpx_isend_v8,
+	.irecv = tcpx_irecv_v8,
+	.iflush = tcpx_iflush,
+	.test = tcpx_test,
 	.closeSend = tcpx_close_send,
 	.closeRecv = tcpx_close_recv,
 	.closeListen = tcpx_close_listen,
-	.getDeviceMr = pluginGetDeviceMr,
-	.irecvConsumed = pluginIrecvConsumed,
+	.getDeviceMr = tcpx_get_device_mr,
+	.irecvConsumed = tcpx_irecv_consumed,
 };
