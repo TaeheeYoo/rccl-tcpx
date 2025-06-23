@@ -365,61 +365,13 @@ FREE_RCOMM:	free(rcomm);
 RETURN_ERROR:	return retval;
 }
 
-tcpxResult_t tcpxRegMr(void* ocomm, void* data, int size, int type,
-			void** mhandle)
-{
-	struct tcpxMemHandle* memHandle;
-	TCPXCHECK(tcpxMemHandleNew(&memHandle));
-	memHandle->mem_type = type;
-
-	switch (type) {
-		case TCPX_PTR_HOST: {
-			memHandle->uptr = data;
-			memHandle->ptr = data;
-			break;
-		}
-		case TCPX_PTR_CUDA: {
-			if (kUseDmaBuf) {
-				if ((uint64_t) data % PAGE_SIZE != 0) {
-					WARN("data not aligned: %p vs 0x%012lu", data, PAGE_SIZE);
-					return tcpxInternalError;
-				}
-				char* nic_pci_addr = strrchr(kTcpxSocketDevs[comm->dev].pci_path, '/') + 1;
-				void* gpu;
-				TCPXCHECK(gpu_current_dev(global.gpus, &gpu));
-				TCPXCHECK(gpu_tx_reg_mr(gpu, &(memHandle->gpu_tx), &(memHandle->gpu_mem_fd),
-						nic_pci_addr, data, size));
-				if (memHandle->gpu_mem_fd < 0) {
-					WARN("get_gpumem_dmabuf_pages_fd() failed!");
-					return tcpxInternalError;
-				}
-			} else {
-				WARN("p2pdma api won't work with only RegMr, due to alignment issue");
-				return tcpxInternalError;
-			}
-
-			memHandle->uptr = data;
-			memHandle->ptr = data;
-			break;
-		}
-		default: {
-			WARN("unknown mem type %d", type);
-			return tcpxInternalError;
-		}
-	}
-
-	*mhandle = memHandle;
-	return tcpxSuccess;
-}
-
-
 __hidden ncclResult_t tcpx_reg_mr(void* internal_comm, void* data, size_t size,
 				  int type, void** mhandle)
 {
 	struct nccl_net_socket_comm *comm = internal_comm;
 	struct tcpx_mem_handle *handle;
 
-	handle = calloc(sizeof(struct struct tcpx_mem_handle));
+	handle = calloc(1, sizeof(struct tcpx_mem_handle));
 	if (handle == NULL) {
 		log(PERRN, "failed to calloc(): ");
 		return ncclInternalError;
