@@ -131,6 +131,8 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 		}
 	}
 
+	freeifaddrs(ifaddr);
+
 	if (ncclNetIfs == 0) {
 		log(ERRN, "failed to find any matching interfaces");
 		return ncclSystemError;
@@ -630,12 +632,14 @@ __hidden ncclResult_t tcpx_close_recv(void* recvComm)
 
 __hidden ncclResult_t tcpx_close_listen(void* listenComm)
 {
-	struct nccl_net_socket_comm *comm = listenComm;
+	struct nccl_net_socket_listen_comm *comm = listenComm;
 
 	log(INFO, "tcpx_close_listen() complete: ");
 	log(INFO, "\tcomm->fd: %d", comm->fd);
 
 	close(comm->fd);
+
+	for (int i = 0; i < comm->num_socks; i++)
 	free(comm);
 
 	return ncclSuccess;
