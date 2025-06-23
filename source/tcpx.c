@@ -125,70 +125,28 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 	for (int i = 0; i < ncclNetIfs; i++) {
 		log(INFO, "\tname: %s", tcpx_devs[i].dev_name);
 		log(INFO, "\tpci_path: %s", tcpx_devs[i].pci_path);
+		do {
+			struct sockaddr_in *addr_in;
+			char ip_str[INET6_ADDRSTRLEN];
+			int port;
+
+			addr_in = &tcpx_devs[i].addr.sin;
+			inet_ntop(AF_INET, addr_in, ip_str, sizeof(ip_str));
+			port = ntohs(addr_in->sin_port);
+
+			log(INFO, "\addr: %s:%d", ip_str, port);
+		} while (false);
 	}
 
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginDevices(int* ndev)
+__hidden ncclResult_t tcpx_devices(int* ndev)
 {
-	log(INFO, "Set devices");
-
 	/* interface index? */
 	*ndev = ncclNetIfs;
 
-	return ncclSuccess;
-}
-
-__hidden ncclResult_t pluginPciPath(int dev, char** path)
-{
-	log(INFO, "Set PCI path: %s", path);
-
-	return ncclSuccess;
-}
-
-__hidden ncclResult_t pluginPtrSupport(int dev, int* supportedTypes)
-{
-	log(INFO, "Return Supported Types");
-
-	return ncclSuccess;
-}
-
-__hidden ncclResult_t pluginGetProperties_v8(int dev, ncclNetProperties_v8_t* props)
-{
-	log(INFO, "Return properties");
-
-	/* Below are default values, if unsure don't change. */
-	props->name = "Example";
-	/* Fill for proper topology detection, e.g.
-	 * /sys/devices/pci0000:00/0000:00:10.0/0000:0b:00.0
-	 */
-	props->pciPath = NULL;
-	/* Only used to detect NICs with multiple PCI attachments. */
-	props->guid = 0;
-	/* Add NCCL_PTR_CUDA if GPU Direct RDMA is supported and regMr can
-	 * take CUDA pointers.
-	 */
-	props->ptrSupport = NCCL_PTR_HOST;
-	/* If you regMr has a fast registration cache, set to 1.
-	 * If set to 0, user buffer registration may be disabled.
-	 */
-	props->regIsGlobal = 0;
-	/* Speed in *Mbps*. 100000 means 100G */
-	props->speed = 100000;
-	/* Port number, used in conjunction with guid */
-	props->port = 0;
-	/* Custom latency (used to help tuning if latency is high.
-	 * If set to 0, use default NCCL values.
-	 */
-	props->latency = 0;
-	/* Maximum number of comm objects we can create. */
-	props->maxComms = 1024*1024;
-	/* Maximum number of receive operations taken by irecv(). */
-	props->maxRecvs = NCCL_PLUGIN_MAX_RECVS;
-	/* Coupling with NCCL network device-side code. */
-	props->netDeviceType = NCCL_NET_DEVICE_HOST;
-	props->netDeviceVersion = NCCL_NET_DEVICE_INVALID_VERSION;
+	log(INFO, "tcpx_devices() complete: %d device(s)", ncclNetIfs);
 
 	return ncclSuccess;
 }
@@ -278,7 +236,7 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 
 	*listen_comm = comm;
 
-	log(INFO, "tcpx_listen() complete");
+	log(INFO, "tcpx_listen() complete:");
 	log(INFO, "\tdevice: %d", dev);
 	log(INFO, "\tcomm->fd: %d", comm->fd);
 	log(INFO, "\thandle->num_socks: %d", comm->num_socks);
@@ -301,9 +259,9 @@ FREE_COMM:	free(comm);
 RETURN_ERROR:	return retval;
 }
 
-__hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
-				    void** sendComm,
-				    ncclNetDeviceHandle_t** sendDevComm)
+__hidden ncclResult_t tcpx_connect(int dev, void* opaqueHandle,
+				   void** sendComm,
+				   ncclNetDeviceHandle_t** sendDevComm)
 {
 	struct nccl_net_socket_handle *handle = opaqueHandle;
 	struct nccl_net_socket_comm *comm;
@@ -334,7 +292,7 @@ __hidden ncclResult_t pluginConnect(int dev, void* opaqueHandle,
 
 	*sendComm = comm;
 
-	log(INFO, "connect() complete");
+	log(INFO, "tcpx_connect() complete:");
 	log(INFO, "\tcomm->fd: %d", comm->fd);
 	do {
 		struct sockaddr_in *addr_in = &handle->connect_addr.sin;
@@ -354,8 +312,8 @@ FREE_COMM:	free(comm);
 RETURN_ERROR:	return retval;
 }
 
-__hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
-				   ncclNetDeviceHandle_t** recvDevComm)
+__hidden ncclResult_t tcpx_accept(void* listenComm, void** recvComm,
+				  ncclNetDeviceHandle_t** recvDevComm)
 {
 	struct nccl_net_socket_listen_comm *lcomm = listenComm;
 	struct nccl_net_socket_comm *rcomm;
@@ -381,7 +339,7 @@ __hidden ncclResult_t pluginAccept(void* listenComm, void** recvComm,
 
 	*recvComm = rcomm;
 
-	log(INFO, "accept() complete");
+	log(INFO, "tcpx_accept() complete:");
 	log(INFO, "\trcomm->fd: %d", rcomm->fd);
 	log(INFO, "\trcomm->dev: %d", rcomm->dev);
 	log(INFO, "\trcomm->num_socks: %d", rcomm->num_socks);
@@ -646,10 +604,9 @@ __hidden ncclResult_t pluginMakeVDevice(int* d, ncclNetVDeviceProps_t* props)
 	return ncclSuccess;
 }
 
-__hidden ncclResult_t pluginGetProperties_v9(int dev, ncclNetProperties_v9_t *props)
+__hidden ncclResult_t tcpx_get_properties_v9(int dev,
+					     ncclNetProperties_v9_t *props)
 {
-	log(INFO, "Return properties");
-
 	/* Below are default values, if unsure don't change. */
 	props->name = "Example";
 	/* Fill for proper topology detection, e.g.
@@ -661,7 +618,7 @@ __hidden ncclResult_t pluginGetProperties_v9(int dev, ncclNetProperties_v9_t *pr
 	/* Add NCCL_PTR_CUDA if GPU Direct RDMA is supported and regMr can
 	 * take CUDA pointers.
 	 */
-	props->ptrSupport = NCCL_PTR_HOST | NCCL_PTR_CUDA;
+	props->ptrSupport = NCCL_PTR_HOST;
 	/* If you regMr has a fast registration cache, set to 1.
 	 * If set to 0, user buffer registration may be disabled.
 	 */
@@ -694,6 +651,8 @@ __hidden ncclResult_t pluginGetProperties_v9(int dev, ncclNetProperties_v9_t *pr
 	props->maxP2pBytes = NCCL_MAX_NET_SIZE_BYTES;
 	props->maxCollBytes = NCCL_MAX_NET_SIZE_BYTES;
 
+	log(INFO, "tcpx_get_properties_v9() complete: device %d", dev);
+
 	return ncclSuccess;
 }
 
@@ -702,11 +661,11 @@ __hidden ncclResult_t pluginGetProperties_v9(int dev, ncclNetProperties_v9_t *pr
 ncclNet_v9_t ncclNetPlugin_v9 = {
 	.name = PLUGIN_NAME,
 	.init = tcpx_init,
-	.devices = pluginDevices,
-	.getProperties = pluginGetProperties_v9,
+	.devices = tcpx_devices,
+	.getProperties = tcpx_get_properties_v9,
 	.listen = tcpx_listen,
-	.connect = pluginConnect,
-	.accept = pluginAccept,
+	.connect = tcpx_connect,
+	.accept = tcpx_accept,
 	.regMr = pluginRegMr,
 	.regMrDmaBuf = pluginRegMrDmaBuf,
 	.deregMr = pluginDeregMr,
@@ -721,6 +680,46 @@ ncclNet_v9_t ncclNetPlugin_v9 = {
 	.irecvConsumed = pluginIrecvConsumed,
 	.makeVDevice   = pluginMakeVDevice,
 };
+
+__hidden ncclResult_t tcpx_get_properties_v8(int dev,
+					     ncclNetProperties_v8_t* props)
+{
+	/* Below are default values, if unsure don't change. */
+	props->name = "Example";
+	/* Fill for proper topology detection, e.g.
+	 * /sys/devices/pci0000:00/0000:00:10.0/0000:0b:00.0
+	 */
+	props->pciPath = NULL;
+	/* Only used to detect NICs with multiple PCI attachments. */
+	props->guid = 0;
+	/* Add NCCL_PTR_CUDA if GPU Direct RDMA is supported and regMr can
+	 * take CUDA pointers.
+	 */
+	props->ptrSupport = NCCL_PTR_HOST;
+	/* If you regMr has a fast registration cache, set to 1.
+	 * If set to 0, user buffer registration may be disabled.
+	 */
+	props->regIsGlobal = 0;
+	/* Speed in *Mbps*. 100000 means 100G */
+	props->speed = 100000;
+	/* Port number, used in conjunction with guid */
+	props->port = 0;
+	/* Custom latency (used to help tuning if latency is high.
+	 * If set to 0, use default NCCL values.
+	 */
+	props->latency = 0;
+	/* Maximum number of comm objects we can create. */
+	props->maxComms = 1024*1024;
+	/* Maximum number of receive operations taken by irecv(). */
+	props->maxRecvs = NCCL_PLUGIN_MAX_RECVS;
+	/* Coupling with NCCL network device-side code. */
+	props->netDeviceType = NCCL_NET_DEVICE_HOST;
+	props->netDeviceVersion = NCCL_NET_DEVICE_INVALID_VERSION;
+
+	log(INFO, "tcpx_get_properties()_v8 complete: device %d", dev);
+
+	return ncclSuccess;
+}
 
 __hidden ncclResult_t pluginIsend_v8(void* sendComm, void* data, int size,
 				  int tag, void* mhandle, void** request)
@@ -749,11 +748,11 @@ __hidden ncclResult_t pluginIrecv_v8(void* recvComm, int n, void** data,
 ncclNet_v8_t ncclNetPlugin_v8 = {
 	.name = PLUGIN_NAME,
 	.init = tcpx_init,
-	.devices = pluginDevices,
-	.getProperties = pluginGetProperties_v8,
+	.devices = tcpx_devices,
+	.getProperties = tcpx_get_properties_v8,
 	.listen = tcpx_listen,
-	.connect = pluginConnect,
-	.accept = pluginAccept,
+	.connect = tcpx_connect,
+	.accept = tcpx_accept,
 	.regMr = pluginRegMr,
 	.regMrDmaBuf = pluginRegMrDmaBuf,
 	.deregMr = pluginDeregMr,
