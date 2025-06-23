@@ -385,12 +385,13 @@ __hidden ncclResult_t tcpx_reg_mr(void* internal_comm, void* data, size_t size,
 	handle->mem_type = type;
 
 	switch (handle->mem_type) {
-	case TCPX_PTR_HOST:
+	case NCCL_PTR_HOST:
 		handle->uptr = data;
 		handle->ptr = data;
 		break;
 
-	case TCPX_PTR_CUDA:
+	case NCCL_PTR_CUDA:
+	default:
 		log(PWARN, "unknown mem_type: %d", handle->mem_type);
 		return ncclInternalError;
 	}
