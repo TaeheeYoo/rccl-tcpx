@@ -1,3 +1,5 @@
+CXX := hipcc
+
 OUTPUT := librccl-net-tcpx.so
 SONAME := $(OUTPUT)
 
