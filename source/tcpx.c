@@ -5,7 +5,7 @@
 #include "net_v9.h"
 #include "net_v8.h"
 
-#include "Cruzer-S/logger/logger.h"
+#include "logger.h"
 
 #include <stdlib.h>
 #include <string.h>
