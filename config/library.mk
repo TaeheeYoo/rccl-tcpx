@@ -1,1 +1,1 @@
-Cruzer-S/logger static
+Cruzer-S/logger static logger
