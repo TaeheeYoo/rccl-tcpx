@@ -9,10 +9,24 @@
 #include <string.h>
 #include <errno.h>
 
+#include <unistd.h>
+
 #include <arpa/inet.h>
+
+#include "ncdevmem.h"
+
+#include "amdgpu_memory_provider.h"
+#include "amdgpu_dmabuf_provider.h"
+
+#define DMABUF_SIZE 4096
+#define N_QUEUES 1
 
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
+
+struct amdgpu_memory_provider *provider = &amdgpu_dmabuf_provider;
+struct amdgpu_memory_buffer *dma_buffer;
+struct ncdevmem *ncdevmem;
 
 enum nccl_socket_ops {
 	NCCL_SOCKET_SEND = 0,
@@ -62,17 +76,14 @@ struct tcpx_dev {
 	char* pci_path;
 };
 
-struct tcpx_mem_handle {
+struct tcpx_memory_handle {
 	void* uptr;
 	void* ptr;
 	int mem_type;
-	int gpu_mem_fd;
-	// int dma_buf_fd;
-	void* gpu;
-	void* gpu_tx;
 };
 
 static struct tcpx_dev tcpx_devs[MAX_IFS];
+
 
 /* TODO NCCL_TCPX_SUBNET */
 __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
@@ -135,6 +146,23 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 
 	if (ncclNetIfs == 0) {
 		log(ERRN, "failed to find any matching interfaces");
+		return ncclSystemError;
+	}
+
+	dma_buffer = provider->alloc(DMABUF_SIZE * getpagesize());
+	if (dma_buffer == NULL) {
+		log(ERRN, "failed to allocate dma-buffer");
+		return ncclSystemError;
+	}
+
+	ncdevmem = ncdevmem_setup(
+		if_nametoindex(tcpx_devs[0].dev_name),
+		N_QUEUES,
+		dma_buffer->fd
+	);
+	if (ncdevmem == NULL) {
+		provider->free(dma_buffer);
+		log(ERRN, "failed to setup ncdevmem");
 		return ncclSystemError;
 	}
 
@@ -371,18 +399,13 @@ __hidden ncclResult_t tcpx_reg_mr(void* internal_comm, void* data, size_t size,
 				  int type, void** mhandle)
 {
 	struct nccl_net_socket_comm *comm = internal_comm;
-	struct tcpx_mem_handle *handle;
+	struct tcpx_memory_handle *handle;
 
-	handle = calloc(1, sizeof(struct tcpx_mem_handle));
+	handle = calloc(1, sizeof(struct tcpx_memory_handle));
 	if (handle == NULL) {
 		log(PERRN, "failed to calloc(): ");
 		return ncclInternalError;
-	} else {
-		handle->gpu = NULL;
-		handle->gpu_mem_fd = -1;
-		handle->gpu = NULL;
-		handle->gpu_tx = NULL;
-	}
+	}	
 	
 	handle->mem_type = type;
 
@@ -421,7 +444,7 @@ __hidden ncclResult_t tcpx_reg_mr_dmabuf(void* comm, void* data, size_t size,
 __hidden ncclResult_t tcpx_dereg_mr(void* internal_comm, void* mhandle)
 {
 	struct nccl_net_socket_comm *comm = internal_comm;
-	struct tcpx_mem_handle *handle = mhandle;
+	struct tcpx_memory_handle *handle = mhandle;
 
 	log(INFO, "tcpx_dereg_mr() complete: ");
 	log(INFO, "\tcomm->fd: %d", comm->fd);
