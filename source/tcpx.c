@@ -647,7 +647,7 @@ __hidden ncclResult_t tcpx_test(void* request, int* done, int* size)
 	req->size = data;
 
 	if (req->op == NCCL_SOCKET_RECV)
-		len = recv_dma(comm->fd, req->data, req->size);
+		len = recv_dma(dma_buffer->fd, req->data, req->size);
 	else if (req->op == NCCL_SOCKET_SEND)
 		len = send_all(comm->fd, req->data, req->size);
 
