@@ -1,9 +1,8 @@
 #include "tcpx.h"
 
+#include "net.h"
 #include "net_v9.h"
 #include "net_v8.h"
-
-#include "logger.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -12,14 +11,15 @@
 #include <unistd.h>
 
 #include <arpa/inet.h>
+#include <net/if.h>
+#include <ifaddrs.h>
+
+#include "logger.h"
 
 #include "ncdevmem.h"
 
 #include "amdgpu_memory_provider.h"
 #include "amdgpu_dmabuf_provider.h"
-
-#define DMABUF_SIZE 4096
-#define N_QUEUES 1
 
 int max_requests = NCCL_NET_MAX_REQUESTS;
 int ncclNetIfs = 0;
@@ -48,7 +48,7 @@ struct nccl_net_socket_comm {
 	int num_threads;
 	int dev;
 
-	struct nccl_net_socket_request requests[MAX_REQUESTS];
+	struct nccl_net_socket_request requests[NCCL_NET_MAX_REQUESTS];
 };
 
 struct nccl_net_socket_listen_comm {
@@ -72,7 +72,7 @@ struct nccl_net_socket_handle {
 
 struct tcpx_dev {
 	union socket_address addr;
-	char dev_name[MAX_IF_NAME_SIZE];
+	char dev_name[IF_NAME_SIZE];
 	char* pci_path;
 };
 
@@ -83,7 +83,6 @@ struct tcpx_memory_handle {
 };
 
 static struct tcpx_dev tcpx_devs[MAX_IFS];
-
 
 /* TODO NCCL_TCPX_SUBNET */
 __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
@@ -202,10 +201,9 @@ __hidden ncclResult_t tcpx_listen(int dev, void *opaque_handle,
 	struct nccl_net_socket_listen_comm *comm;
 	int family, salen, err, sockfd, opt = 1;
 	struct nccl_net_socket_handle* handle;
-	char line[SOCKET_NAME_MAXLEN + 1];
 	ncclResult_t retval;
 
-	handle = (struct nccl_net_socket_handle *)opaque_handle;
+	handle = (struct nccl_net_socket_handle *) opaque_handle;
 
 	if (dev < 0 || dev >= ncclNetIfs) {
 		log(WARN, "tcpx_listen dev=%d ncclNetIfs=%d",
@@ -464,7 +462,7 @@ __hidden ncclResult_t tcpx_isend(void* sendComm, void* data, size_t size,
 	struct nccl_net_socket_comm *comm = sendComm;
 	struct nccl_net_socket_request *req;
 
-	for (int i = 0; i < MAX_REQUESTS; i++) {
+	for (int i = 0; i < NCCL_NET_MAX_REQUESTS; i++) {
 		req = comm->requests + i;
 		if (req->used != 0)
 			continue;
@@ -497,7 +495,7 @@ __hidden ncclResult_t tcpx_irecv(void* recvComm, int n, void** data,
 	struct nccl_net_socket_comm *comm = recvComm;
 	struct nccl_net_socket_request *req;
 
-	for (int i = 0; i < MAX_REQUESTS; i++) {
+	for (int i = 0; i < NCCL_NET_MAX_REQUESTS; i++) {
 		req = comm->requests + i;
 		if (req->used != 0)
 			continue;
@@ -560,6 +558,59 @@ int send_all(int fd, void *data, int size)
 	return send_len;
 }
 
+int recv_dma(int fd, void *data, int size)
+{
+	struct msghdr msg;
+	struct iovec iovec;
+
+	char ctrl_data[CTRL_DATA_LEN];
+	int ret;
+
+	log(INFO, "recv_dma(%d, %p, %d):", fd, data, size);
+
+	msg.msg_control = ctrl_data;
+	msg.msg_controllen = CTRL_DATA_LEN;
+
+	msg.msg_iov = &iovec;
+	msg.msg_iovlen = 1;
+
+	iovec.iov_base = data;
+	iovec.iov_len = size;
+
+	ret = recvmsg(fd, &msg, MSG_SOCK_DEVMEM);
+	if (ret == -1) return -1;
+	if (ret ==  0) return  0;
+
+	for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+      	     cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))
+	{
+		struct dmabuf_cmsg *dmabuf_cmsg;
+		size_t offset, size;
+
+		dmabuf_cmsg = (struct dmabuf_cmsg *) CMSG_DATA(cmsg);
+
+		log(INFO, "\tcmsg->type: %d", cmsg->cmsg_type);
+		log(INFO, "\tcmsg->len: %d", cmsg->cmsg_len);
+		log(INFO, "\tcmsg->level: %d", cmsg->cmsg_level);
+
+		if (cmsg->cmsg_type == SCM_DEVMEM_DMABUF) {
+			offset = dmabuf_cmsg->frag_offset;
+			size = dmabuf_cmsg->frag_size;
+
+			log(INFO, "\tdmabuf_cmsg->frag_offset: %d", offset);
+			log(INFO, "\tdmabuf_cmsg->frag_size: %d", size);
+
+			provider->memmove_to(dma_buffer, data, offset, size);
+		} else if (cmsg->cmsg_type == SCM_DEVMEM_LINEAR) {
+			size = dmabuf_cmsg->frag_size;
+
+			log(INFO, "\tdmabuf_cmsg->frag_size: %d", size);
+		}
+	}
+
+	return 0;
+}
+
 __hidden ncclResult_t tcpx_test(void* request, int* done, int* size)
 {
 	struct nccl_net_socket_request *req = request;
@@ -579,19 +630,7 @@ __hidden ncclResult_t tcpx_test(void* request, int* done, int* size)
 	}
 
 	if (req->op == NCCL_SOCKET_RECV) {
-		len = recv_all(comm->fd, &data, sizeof(int));
-		if (len < 0) {
-			log(PWARN, "failed to recv_all(): ");
-			return ncclInternalError;
-		}
-
-		if (len == 0) {
-			log(WARN, "failed to recv_all(): connection closed");
-			return ncclRemoteError;
-		}
-
-		if (data > req->size)
-			return ncclInvalidUsage;
+		// do nothing
 	} else if (req->op == NCCL_SOCKET_SEND) {
 		len = send_all(comm->fd, &data, sizeof(int));
 		if (len < 0) {
@@ -608,7 +647,7 @@ __hidden ncclResult_t tcpx_test(void* request, int* done, int* size)
 	req->size = data;
 
 	if (req->op == NCCL_SOCKET_RECV)
-		len = recv_all(comm->fd, req->data, req->size);
+		len = recv_dma(comm->fd, req->data, req->size);
 	else if (req->op == NCCL_SOCKET_SEND)
 		len = send_all(comm->fd, req->data, req->size);
 
