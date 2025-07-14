@@ -148,6 +148,7 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 		return ncclSystemError;
 	}
 
+	/*
 	dma_buffer = provider->alloc(DMABUF_SIZE * getpagesize());
 	if (dma_buffer == NULL) {
 		log(ERRN, "failed to allocate dma-buffer");
@@ -164,6 +165,7 @@ __hidden ncclResult_t tcpx_init(ncclDebugLogger_t logFunction)
 		log(ERRN, "failed to setup ncdevmem");
 		return ncclSystemError;
 	}
+	*/
 
 	log(INFO, "tcpx_init() complete: %d interface(s)", ncclNetIfs);
 	for (int i = 0; i < ncclNetIfs; i++) {
