@@ -630,11 +630,21 @@ __hidden ncclResult_t tcpx_test(void* request, int* done, int* size)
 	}
 
 	if (req->op == NCCL_SOCKET_RECV) {
-		// do nothing
+		len = recv_all(comm->fd, &data, sizeof(int));
+		if (len < 0) {
+			log(PWARN, "failed to recv_all(): ");
+			return ncclInternalError;
+		}
+
+		if (len == 0) {
+			log(WARN, "failed to tcpx_test(): connection closed");
+			return ncclRemoteError;
+		}
+
 	} else if (req->op == NCCL_SOCKET_SEND) {
 		len = send_all(comm->fd, &data, sizeof(int));
 		if (len < 0) {
-			log(PWARN, "failed to recv_all(): ");
+			log(PWARN, "failed to send_all(): ");
 			return ncclInternalError;
 		}
 
@@ -647,7 +657,7 @@ __hidden ncclResult_t tcpx_test(void* request, int* done, int* size)
 	req->size = data;
 
 	if (req->op == NCCL_SOCKET_RECV)
-		len = recv_dma(dma_buffer->fd, req->data, req->size);
+		len = recv_all(comm->fd, req->data, req->size);
 	else if (req->op == NCCL_SOCKET_SEND)
 		len = send_all(comm->fd, req->data, req->size);
 
